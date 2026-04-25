@@ -23,10 +23,13 @@ class WatchPeripheral(
     context: Context,
     private val onConnectionChanged: (Boolean) -> Unit,
 ) {
-    private val bluetoothManager = context.getSystemService(BluetoothManager::class.java)
+    private val appContext = context.applicationContext
+    private val bluetoothManager = appContext.getSystemService(BluetoothManager::class.java)
     private val bluetoothAdapter: BluetoothAdapter = bluetoothManager.adapter
     private val advertiser: BluetoothLeAdvertiser? = bluetoothAdapter.bluetoothLeAdvertiser
     private val connectedCentrals = linkedSetOf<BluetoothDevice>()
+    private val subscribedCentrals = linkedSetOf<BluetoothDevice>()
+    private var originalDeviceName: String? = null
 
     private var gattServer: BluetoothGattServer? = null
     private val triggerCharacteristic = BluetoothGattCharacteristic(
@@ -48,6 +51,11 @@ class WatchPeripheral(
         Manifest.permission.BLUETOOTH_CONNECT,
     ])
     fun start() {
+        if (bluetoothAdapter.name != BleConstants.WATCH_DEVICE_NAME) {
+            originalDeviceName = bluetoothAdapter.name
+            bluetoothAdapter.name = BleConstants.WATCH_DEVICE_NAME
+        }
+
         val service = BluetoothGattService(
             BleConstants.WATCH_SERVICE_UUID,
             BluetoothGattService.SERVICE_TYPE_PRIMARY,
@@ -55,7 +63,7 @@ class WatchPeripheral(
             addCharacteristic(triggerCharacteristic)
         }
 
-        gattServer = bluetoothManager.openGattServer(context, gattCallback).apply {
+        gattServer = bluetoothManager.openGattServer(appContext, gattCallback).apply {
             addService(service)
         }
 
@@ -65,19 +73,28 @@ class WatchPeripheral(
             .build()
 
         val data = AdvertiseData.Builder()
-            .setIncludeDeviceName(true)
             .addServiceUuid(ParcelUuid(BleConstants.WATCH_SERVICE_UUID))
             .build()
 
-        advertiser?.startAdvertising(settings, data, advertiseCallback)
+        val scanResponse = AdvertiseData.Builder()
+            .setIncludeDeviceName(true)
+            .build()
+
+        advertiser?.startAdvertising(settings, data, scanResponse, advertiseCallback)
     }
 
-    @RequiresPermission(Manifest.permission.BLUETOOTH_ADVERTISE)
+    @RequiresPermission(allOf = [
+        Manifest.permission.BLUETOOTH_ADVERTISE,
+        Manifest.permission.BLUETOOTH_CONNECT,
+    ])
     fun stop() {
         advertiser?.stopAdvertising(advertiseCallback)
         gattServer?.close()
         gattServer = null
         connectedCentrals.clear()
+        subscribedCentrals.clear()
+        originalDeviceName?.let { bluetoothAdapter.name = it }
+        originalDeviceName = null
         onConnectionChanged(false)
     }
 
@@ -85,7 +102,7 @@ class WatchPeripheral(
     fun sendTrigger() {
         triggerCharacteristic.value = BleConstants.TRIGGER_PAYLOAD
 
-        connectedCentrals.forEach { device ->
+        subscribedCentrals.forEach { device ->
             gattServer?.notifyCharacteristicChanged(device, triggerCharacteristic, false)
         }
     }
@@ -100,7 +117,10 @@ class WatchPeripheral(
 
             when (newState) {
                 BluetoothGatt.STATE_CONNECTED -> connectedCentrals.add(device)
-                BluetoothGatt.STATE_DISCONNECTED -> connectedCentrals.remove(device)
+                BluetoothGatt.STATE_DISCONNECTED -> {
+                    connectedCentrals.remove(device)
+                    subscribedCentrals.remove(device)
+                }
             }
 
             onConnectionChanged(connectedCentrals.isNotEmpty())
@@ -139,8 +159,9 @@ class WatchPeripheral(
 
                 if (notificationsEnabled) {
                     connectedCentrals.add(device)
+                    subscribedCentrals.add(device)
                 } else {
-                    connectedCentrals.remove(device)
+                    subscribedCentrals.remove(device)
                 }
 
                 onConnectionChanged(connectedCentrals.isNotEmpty())

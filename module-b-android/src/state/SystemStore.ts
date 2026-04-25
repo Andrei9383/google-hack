@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 
+import { DEFAULT_VEST_BASE_URL } from '../ble/constants';
 import type { AuraZone, VestSensorData, VestStatusCode } from '../ble/VestProtocol';
 import type { OverrideRecord } from '../fusion/SensorFusion';
 import type { SceneDetection } from '../vision/ObjectFilter';
@@ -18,6 +19,7 @@ interface SystemStoreState {
   cameraActive: boolean;
   vestStatus: VestStatusCode;
   phoneBatteryLevel: number | null;
+  vestBaseUrl: string;
   vestSensorData: VestSensorData;
   detections: SceneDetection[];
   lastScene: string;
@@ -29,6 +31,7 @@ interface SystemStoreState {
   setCameraActive: (active: boolean) => void;
   setVestStatus: (status: VestStatusCode) => void;
   setPhoneBatteryLevel: (level: number | null) => void;
+  setVestBaseUrl: (baseUrl: string) => void;
   setVestSensorData: (sensorData: VestSensorData) => void;
   setDetections: (detections: SceneDetection[]) => void;
   setLastScene: (scene: string) => void;
@@ -49,6 +52,7 @@ export const useSystemStore = create<SystemStoreState>((set, get) => ({
   cameraActive: false,
   vestStatus: 0x00,
   phoneBatteryLevel: null,
+  vestBaseUrl: DEFAULT_VEST_BASE_URL,
   vestSensorData: INITIAL_SENSOR_DATA,
   detections: [],
   lastScene: 'Nothing detected.',
@@ -69,6 +73,7 @@ export const useSystemStore = create<SystemStoreState>((set, get) => ({
   },
   setVestStatus: (status) => set({ vestStatus: status }),
   setPhoneBatteryLevel: (level) => set({ phoneBatteryLevel: level }),
+  setVestBaseUrl: (baseUrl) => set({ vestBaseUrl: baseUrl }),
   setVestSensorData: (sensorData) => {
     set({ vestSensorData: sensorData, systemMode: 'scanning' });
     syncMode(get, set);

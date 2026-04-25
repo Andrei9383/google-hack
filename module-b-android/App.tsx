@@ -1,6 +1,4 @@
 import { StatusBar } from 'expo-status-bar';
-import * as SystemUI from 'expo-system-ui';
-import { useEffect } from 'react';
 import { SafeAreaView, StyleSheet, View } from 'react-native';
 
 import { useAuraSystem } from './src/app/useAuraSystem';
@@ -11,20 +9,15 @@ import { CameraProcessor } from './src/vision/CameraProcessor';
 
 function AuraShell({ cameraGranted }: { cameraGranted: boolean }) {
   const system = useSystemStore();
-  const { connectBoard, describeSceneNow, handleVisionDetections, handleVisionError } = useAuraSystem(
+  const { describeSceneNow, handleVisionDetections, handleVisionError } = useAuraSystem(
     cameraGranted,
   );
-
-  useEffect(() => {
-    void SystemUI.setBackgroundColorAsync('#08121a');
-  }, []);
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         {cameraGranted ? (
           <CameraProcessor
-            detections={system.detections}
             enabled={cameraGranted}
             onDetections={handleVisionDetections}
             onError={handleVisionError}
@@ -37,10 +30,11 @@ function AuraShell({ cameraGranted }: { cameraGranted: boolean }) {
           watchConnected={system.watchConnected}
           cameraActive={system.cameraActive}
           phoneBatteryLevel={system.phoneBatteryLevel}
+          vestBaseUrl={system.vestBaseUrl}
           sensorData={system.vestSensorData}
           lastScene={system.lastScene}
           lastError={system.lastError}
-          onConnectBoard={connectBoard}
+          onApplyVestBaseUrl={system.setVestBaseUrl}
           onDescribeNow={describeSceneNow}
         />
         <StatusBar style="light" />

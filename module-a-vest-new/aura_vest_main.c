@@ -15,7 +15,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "aura_vest_ble.h"
+#include "aura_vest_transport.h"
 
 #ifndef FAR
 #  define FAR
@@ -62,11 +62,6 @@
 #define AURA_STATUS_CRITICAL_BATTERY 0x02
 #define AURA_STATUS_SENSOR_FAULT 0x03
 
-#define AURA_SERVICE_UUID "2E6A0000-C4B2-4D6E-A591-7F8B2D3E1A00"
-#define AURA_SENSOR_UUID "2E6A0001-C4B2-4D6E-A591-7F8B2D3E1A00"
-#define AURA_HAPTIC_UUID "2E6A0002-C4B2-4D6E-A591-7F8B2D3E1A00"
-#define AURA_STATUS_UUID "2E6A0003-C4B2-4D6E-A591-7F8B2D3E1A00"
-
 #ifndef CONFIG_EXAMPLES_AURA_VEST_TRIG_LEFT_DEV
 #  define CONFIG_EXAMPLES_AURA_VEST_TRIG_LEFT_DEV "/dev/gpio0"
 #endif
@@ -99,6 +94,21 @@
 #endif
 #ifndef CONFIG_EXAMPLES_AURA_VEST_MAX_MOTOR_DUTY
 #  define CONFIG_EXAMPLES_AURA_VEST_MAX_MOTOR_DUTY 255
+#endif
+#ifndef CONFIG_EXAMPLES_AURA_VEST_HTTP_BIND_ADDRESS
+#  define CONFIG_EXAMPLES_AURA_VEST_HTTP_BIND_ADDRESS "0.0.0.0"
+#endif
+#ifndef CONFIG_EXAMPLES_AURA_VEST_HTTP_PORT
+#  define CONFIG_EXAMPLES_AURA_VEST_HTTP_PORT 8080
+#endif
+#ifndef CONFIG_EXAMPLES_AURA_VEST_HTTP_STATE_PATH
+#  define CONFIG_EXAMPLES_AURA_VEST_HTTP_STATE_PATH "/api/v1/state"
+#endif
+#ifndef CONFIG_EXAMPLES_AURA_VEST_HTTP_HAPTIC_PATH
+#  define CONFIG_EXAMPLES_AURA_VEST_HTTP_HAPTIC_PATH "/api/v1/haptic"
+#endif
+#ifndef CONFIG_EXAMPLES_AURA_VEST_HTTP_HEALTH_PATH
+#  define CONFIG_EXAMPLES_AURA_VEST_HTTP_HEALTH_PATH "/api/v1/healthz"
 #endif
 
 enum aura_zone_e
@@ -327,12 +337,10 @@ static int aura_pwm_write(int fd, uint8_t duty)
 #ifdef CONFIG_PWM_MULTICHAN
       info.channels[0].duty = duty_b16;
       info.channels[0].cpol = PWM_CPOL_LOW;
-      info.channels[0].dcpol = PWM_DCPOL_LOW;
       info.channels[0].channel = 1;
 #else
       info.duty = duty_b16;
       info.cpol = PWM_CPOL_LOW;
-      info.dcpol = PWM_DCPOL_LOW;
 #endif
 
       if (ioctl(fd, PWMIOC_SETCHARACTERISTICS, (unsigned long)((uintptr_t)&info)) < 0)
@@ -667,35 +675,6 @@ static void aura_buzz_all(struct aura_app_s *app, uint32_t on_ms)
     }
 }
 
-__attribute__((weak)) int aura_platform_ble_init(
-  const struct aura_ble_config_s *config)
-{
-  printf("aura_vest: BLE adapter not linked, running haptics locally\n");
-  printf("aura_vest: service=%s sensor=%s haptic=%s status=%s name=%s\n",
-         config->service_uuid, config->sensor_uuid, config->haptic_uuid,
-         config->status_uuid, config->device_name);
-  return 0;
-}
-
-__attribute__((weak)) bool aura_platform_ble_read_override(uint8_t payload[3])
-{
-  (void)payload;
-  return false;
-}
-
-__attribute__((weak)) int aura_platform_ble_notify_sensor(
-  const uint8_t payload[3])
-{
-  (void)payload;
-  return 0;
-}
-
-__attribute__((weak)) int aura_platform_ble_notify_status(uint8_t status)
-{
-  (void)status;
-  return 0;
-}
-
 static int aura_init_hardware(struct aura_app_s *app)
 {
   int zone;
@@ -763,7 +742,7 @@ static void aura_poll_sensors(struct aura_app_s *app)
 int main(int argc, FAR char *argv[])
 {
   struct aura_app_s app;
-  struct aura_ble_config_s ble_config;
+  struct aura_transport_config_s transport_config;
   uint8_t sensor_payload[3];
   uint8_t override_payload[3];
 
@@ -774,21 +753,22 @@ int main(int argc, FAR char *argv[])
   app.boot_ms = aura_time_ms();
   app.status = AURA_STATUS_OK;
 
-  ble_config.service_uuid = AURA_SERVICE_UUID;
-  ble_config.sensor_uuid = AURA_SENSOR_UUID;
-  ble_config.haptic_uuid = AURA_HAPTIC_UUID;
-  ble_config.status_uuid = AURA_STATUS_UUID;
-  ble_config.device_name = "AURA Vest";
+  transport_config.bind_address = CONFIG_EXAMPLES_AURA_VEST_HTTP_BIND_ADDRESS;
+  transport_config.port = CONFIG_EXAMPLES_AURA_VEST_HTTP_PORT;
+  transport_config.state_path = CONFIG_EXAMPLES_AURA_VEST_HTTP_STATE_PATH;
+  transport_config.haptic_path = CONFIG_EXAMPLES_AURA_VEST_HTTP_HAPTIC_PATH;
+  transport_config.health_path = CONFIG_EXAMPLES_AURA_VEST_HTTP_HEALTH_PATH;
+  transport_config.device_name = "AURA Sparrow Vest";
 
-  printf("aura_vest: starting embedded vest app\n");
+  printf("aura_vest: starting Sparrow WiFi vest app\n");
 
   if (aura_init_hardware(&app) < 0)
     {
       app.status = AURA_STATUS_SENSOR_FAULT;
     }
 
-  aura_platform_ble_init(&ble_config);
-  aura_platform_ble_notify_status(app.status);
+  aura_platform_transport_init(&transport_config);
+  aura_platform_transport_publish_status(app.status);
   aura_buzz_all(&app, 300);
 
   for (;;)
@@ -797,7 +777,7 @@ int main(int argc, FAR char *argv[])
       const uint64_t now_ms = aura_time_ms();
       uint64_t elapsed_us;
 
-      while (aura_platform_ble_read_override(override_payload))
+      while (aura_platform_transport_read_override(override_payload))
         {
           aura_apply_override(&app, override_payload);
         }
@@ -806,7 +786,7 @@ int main(int argc, FAR char *argv[])
       aura_update_motors(&app, now_ms);
 
       aura_encode_sensor_payload(app.distance_cm, sensor_payload);
-      aura_platform_ble_notify_sensor(sensor_payload);
+      aura_platform_transport_publish_sensor(sensor_payload);
 
       if (now_ms - app.last_log_ms >= 1000ULL)
         {

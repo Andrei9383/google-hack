@@ -29,7 +29,7 @@ export function PermissionsGate({ children }: PermissionsGateProps) {
       <View style={styles.container}>
         <Text style={styles.title}>Aura Setup Required</Text>
         <Text style={styles.body}>
-          Bluetooth permissions are required to connect to the vest and watch.
+          Bluetooth permissions are still required for the watch trigger. The vest itself now uses WiFi.
         </Text>
         <Pressable
           accessibilityLabel="Grant Bluetooth permissions"

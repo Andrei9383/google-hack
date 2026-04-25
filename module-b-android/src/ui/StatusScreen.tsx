@@ -1,4 +1,5 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import type { VestSensorData } from '../ble/VestProtocol';
 
@@ -8,10 +9,11 @@ interface StatusScreenProps {
   watchConnected: boolean;
   cameraActive: boolean;
   phoneBatteryLevel: number | null;
+  vestBaseUrl: string;
   sensorData: VestSensorData;
   lastScene: string;
   lastError: string | null;
-  onConnectBoard: () => void;
+  onApplyVestBaseUrl: (baseUrl: string) => void;
   onDescribeNow: () => void;
 }
 
@@ -21,12 +23,19 @@ export function StatusScreen({
   watchConnected,
   cameraActive,
   phoneBatteryLevel,
+  vestBaseUrl,
   sensorData,
   lastScene,
   lastError,
-  onConnectBoard,
+  onApplyVestBaseUrl,
   onDescribeNow,
 }: StatusScreenProps) {
+  const [vestBaseUrlDraft, setVestBaseUrlDraft] = useState(vestBaseUrl);
+
+  useEffect(() => {
+    setVestBaseUrlDraft(vestBaseUrl);
+  }, [vestBaseUrl]);
+
   return (
     <ScrollView contentContainerStyle={styles.content}>
       <View style={styles.heroCard}>
@@ -45,15 +54,27 @@ export function StatusScreen({
         <StatusRow label="Vest" connected={vestConnected} />
         <StatusRow label="Watch" connected={watchConnected} />
         <StatusRow label="Camera" connected={cameraActive} />
+
+        <Text style={styles.inputLabel}>Vest WiFi URL</Text>
+        <TextInput
+          accessibilityLabel="Vest WiFi URL"
+          autoCapitalize="none"
+          autoCorrect={false}
+          onChangeText={setVestBaseUrlDraft}
+          placeholder="http://10.41.x.x:8080"
+          placeholderTextColor="#617886"
+          style={styles.urlInput}
+          value={vestBaseUrlDraft}
+        />
         <Pressable
-          accessibilityLabel="Connect Aura board"
+          accessibilityLabel="Apply vest WiFi URL"
           accessibilityRole="button"
-          onPress={onConnectBoard}
-          style={[styles.connectButton, vestConnected ? styles.connectedButton : null]}
+          onPress={() => {
+            onApplyVestBaseUrl(vestBaseUrlDraft);
+          }}
+          style={styles.secondaryAction}
         >
-          <Text style={[styles.connectButtonText, vestConnected ? styles.connectedButtonText : null]}>
-            {vestConnected ? 'BOARD CONNECTED' : 'CONNECT BOARD'}
-          </Text>
+          <Text style={styles.secondaryActionText}>APPLY VEST URL</Text>
         </Pressable>
       </View>
 
@@ -181,25 +202,38 @@ const styles = StyleSheet.create({
     color: '#b7c8d5',
     fontSize: 15,
   },
-  connectButton: {
+  inputLabel: {
+    color: '#cfe0eb',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    marginTop: 18,
+    marginBottom: 8,
+  },
+  urlInput: {
+    backgroundColor: '#08131b',
+    borderColor: '#173243',
+    borderRadius: 14,
+    borderWidth: 1,
+    color: '#f6fbff',
+    fontSize: 15,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  secondaryAction: {
     alignItems: 'center',
-    borderColor: '#2fd08c',
+    borderColor: '#2f4f61',
     borderRadius: 999,
     borderWidth: 1,
-    marginTop: 18,
-    paddingHorizontal: 18,
-    paddingVertical: 13,
+    marginTop: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
-  connectedButton: {
-    borderColor: '#315365',
-  },
-  connectButtonText: {
-    color: '#7ef0b6',
+  secondaryActionText: {
+    color: '#d8e5ee',
     fontSize: 14,
-    fontWeight: '800',
-  },
-  connectedButtonText: {
-    color: '#9db1bd',
+    fontWeight: '700',
+    letterSpacing: 0.6,
   },
   panel: {
     backgroundColor: '#0a141b',

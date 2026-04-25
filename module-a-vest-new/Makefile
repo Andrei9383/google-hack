@@ -6,10 +6,6 @@ STACKSIZE = 4096
 MODULE = $(CONFIG_EXAMPLES_AURA_VEST)
 
 MAINSRC = aura_vest_main.c
-
-ifeq ($(CONFIG_NIMBLE),y)
-CSRCS += aura_ble_nimble.c
-include $(APPDIR)/wireless/bluetooth/nimble/Makefile.nimble
-endif
+CSRCS += aura_vest_http.c
 
 include $(APPDIR)/Application.mk

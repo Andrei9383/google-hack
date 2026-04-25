@@ -1,22 +1,30 @@
 # Aura Android App
 
-This module implements the Android "brain" for Project Aura as an Expo development-build app.
+This is the Android app for Project Aura.
+
+Current transport split:
+
+- Vest: WiFi HTTP to the Sparrow board
+- Watch: BLE, unchanged from the working watch implementation
+
+iOS is intentionally out of scope here.
 
 ## What Is Included
 
-- BLE central logic for the vest and watch.
-- Sensor fusion and scene formatting logic with unit tests.
-- Accessible single-screen caregiver UI.
-- Camera snapshot pipeline.
-- Local Expo native module for Android ML Kit object detection and foreground service support.
-- Graceful fallback when the native module is unavailable.
+- WiFi vest polling and haptic override delivery
+- BLE watch trigger handling
+- Sensor fusion and scene formatting logic with unit tests
+- Accessible single-screen status UI
+- Camera snapshot pipeline
+- Local Expo native module for Android ML Kit object detection and foreground service support
 
 ## Key Files
 
-- `src/ble/constants.ts`: all UUIDs and BLE timing constants.
-- `src/app/useAuraSystem.ts`: system orchestration.
-- `src/vision/CameraProcessor.tsx`: snapshot camera loop.
-- `modules/aura-native/`: local Expo native module.
+- `src/connectivity/AuraConnectivityManager.ts`: hybrid vest WiFi plus watch BLE transport layer
+- `src/app/useAuraSystem.ts`: system orchestration
+- `src/ui/StatusScreen.tsx`: caregiver UI including vest URL entry
+- `src/vision/CameraProcessor.tsx`: snapshot camera loop
+- `modules/aura-native/`: Android native module
 
 ## Environment
 
@@ -30,19 +38,29 @@ This module implements the Android "brain" for Project Aura as an Expo developme
 npm install
 ```
 
-## Build And Run
+## Build And Run On Android
 
 1. Generate or refresh the Android native project:
 
-```sh
-npx expo prebuild --platform android
-```
+   ```sh
+   npx expo prebuild --platform android
+   ```
 
-2. Run on a connected device or emulator:
+2. Run on a connected Android device:
 
-```sh
-npm run android
-```
+   ```sh
+   npm run android
+   ```
+
+3. Grant camera and Bluetooth permissions when prompted.
+
+4. On the main screen, enter the Sparrow vest URL in this format:
+
+   ```text
+   http://<sparrow-ip>:8080
+   ```
+
+5. Tap `APPLY VEST URL`.
 
 ## Validation
 
@@ -54,24 +72,22 @@ npx expo prebuild --platform android --no-install
 
 ## Permissions
 
-The app requests:
+The app still requests:
 
-- Bluetooth scan/connect/advertise
+- Bluetooth scan/connect for the watch
 - Camera
 - Foreground service
 - Wake lock
 - Fine location for Android BLE scanning compatibility
 
+The vest itself no longer uses BLE.
+
 ## Native Module Notes
 
-The local Expo module lives in `modules/aura-native/` and exposes:
+The local Expo module exposes:
 
 - `detectObjectsAsync(uri)`
 - `startForegroundServiceAsync(title, description)`
 - `stopForegroundServiceAsync()`
 
-On Android, it uses ML Kit object detection and a foreground notification service. On web and iOS it resolves to no-op fallbacks so the JS layer still runs.
-
-## Demo Configuration
-
-`.env.example` contains the public vision-mode variable used for local configuration.
+On Android it uses ML Kit object detection and a foreground service notification.

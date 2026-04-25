@@ -1,3 +1,3 @@
 ifneq ($(CONFIG_EXAMPLES_AURA_VEST),)
-CONFIGURED_APPS += examples/aura_vest
+CONFIGURED_APPS += $(APPDIR)/examples/aura_vest
 endif

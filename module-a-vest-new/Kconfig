@@ -2,10 +2,9 @@ menuconfig EXAMPLES_AURA_VEST
        tristate "Aura Vest embedded app"
        default n
        ---help---
-               Enable the Project Aura vest app. The app polls three
-               ultrasonic sensors, drives four one-direction vibration motors
-               through one L293D four-channel driver, and exposes the BLE
-               payload contract used by module-b-android.
+              Enable the Project Aura vest app.
+              Poll three ultrasonic sensors, drive the vest motors,
+              and expose the WiFi HTTP control surface.
 
 if EXAMPLES_AURA_VEST
 
@@ -57,5 +56,29 @@ config EXAMPLES_AURA_VEST_MAX_MOTOR_DUTY
                Limits the strongest motor command before it is sent to PWM.
                Set this lower when the L293D motor supply is higher than the
                small vibration motor's rated voltage.
+
+config EXAMPLES_AURA_VEST_HTTP_BIND_ADDRESS
+       string "HTTP server bind address"
+       default "0.0.0.0"
+       ---help---
+               Bind address for the vest HTTP control server. Leave this at
+               0.0.0.0 unless you need to limit the interface.
+
+config EXAMPLES_AURA_VEST_HTTP_PORT
+       int "HTTP server port"
+       default 8080
+       range 1 65535
+
+config EXAMPLES_AURA_VEST_HTTP_STATE_PATH
+       string "State endpoint path"
+       default "/api/v1/state"
+
+config EXAMPLES_AURA_VEST_HTTP_HAPTIC_PATH
+       string "Haptic override endpoint path"
+       default "/api/v1/haptic"
+
+config EXAMPLES_AURA_VEST_HTTP_HEALTH_PATH
+       string "Health endpoint path"
+       default "/api/v1/healthz"
 
 endif

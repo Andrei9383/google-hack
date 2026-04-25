@@ -1,22 +1,17 @@
 # Sparrow Board Setup
 
-This machine is prepared and the Sparrow firmware build now completes successfully.
+These instructions are for Sparrow V2 boards with ESP32 and follow the 2024 SI lab flow.
 
-## Already done on this machine
+The correct baseline is:
 
-- Cloned the Hacktor Watch NuttX repo with submodules into `/home/andrei/hectorwatch-nuttx`
-- Downloaded the classic ESP32 Xtensa cross-toolchain into `/home/andrei/.local/xtensa/xtensa-esp32-elf`
-- Downloaded the ESP32-S3 Xtensa cross-toolchain into `/home/andrei/.local/xtensa/xtensa-esp32s3-elf`
-- Installed `esptool` and `pyserial` into the workspace virtual environment at `/home/andrei/google-hackathon-2/.venv`
-- Applied `apps.patch` into `/home/andrei/hectorwatch-nuttx/nuttx-apps`
-- Applied the `nuttx.patch` intent manually into `/home/andrei/hectorwatch-nuttx/nuttx/boards/xtensa/esp32/esp32-sparrow-kit/configs/nsh/defconfig`
-- Added explicit LX6 and Espressif GNU toolchain symbols to the Sparrow `defconfig` so the generated `.config` uses `xtensa-esp32-elf-*` instead of falling back to host `gcc`
+- Apache NuttX repository
+- Apache NuttX `apps` repository
+- board target `esp32-sparrow-kit:nsh`
+- Espressif prebuilt bootloader and partition table binaries
 
-## Remaining host packages
+Do not use the earlier Hacktor Watch repository path for this board.
 
-Ubuntu 25.10 has `libncurses-dev` instead of the older `libncurses5-dev` and `libncursesw5-dev` names.
-
-Run:
+## 1. Install host dependencies
 
 ```sh
 sudo apt-get update
@@ -25,120 +20,229 @@ sudo apt-get install -y \
   build-essential genromfs libgmp-dev libmpc-dev libmpfr-dev libisl-dev \
   binutils-dev libelf-dev libexpat-dev gcc-multilib g++-multilib \
   picocom u-boot-tools util-linux chrony libusb-dev libusb-1.0-0-dev \
-  kconfig-frontends python3-pip libncurses-dev
+  kconfig-frontends python3-pip python3-venv libncurses-dev
 ```
 
-## Environment for the current shell
-
-Run:
+## 2. Install the Xtensa ESP32 toolchain
 
 ```sh
-export PATH=/home/andrei/google-hackathon-2/.venv/bin:/home/andrei/.local/xtensa/xtensa-esp32-elf/bin:/home/andrei/.local/xtensa/xtensa-esp32s3-elf/bin:$PATH
-source /home/andrei/google-hackathon-2/.venv/bin/activate
-```
-
-Optional persistent setup:
-
-```sh
-echo 'export PATH=/home/andrei/google-hackathon-2/.venv/bin:/home/andrei/.local/xtensa/xtensa-esp32-elf/bin:/home/andrei/.local/xtensa/xtensa-esp32s3-elf/bin:$PATH' >> ~/.bashrc
-echo 'source /home/andrei/google-hackathon-2/.venv/bin/activate' >> ~/.bashrc
+cd ~
+wget https://github.com/espressif/crosstool-NG/releases/download/esp-12.2.0_20230208/xtensa-esp32-elf-12.2.0_20230208-x86_64-linux-gnu.tar.xz
+tar -xf xtensa-esp32-elf-12.2.0_20230208-x86_64-linux-gnu.tar.xz
+sudo mkdir -p /opt/xtensa
+sudo mv xtensa-esp32-elf /opt/xtensa/
+echo 'export PATH=$PATH:/opt/xtensa/xtensa-esp32-elf/bin' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-## Configure and build Sparrow NuttX
-
-Run:
+## 3. Clone NuttX and apps
 
 ```sh
-cd /home/andrei/hectorwatch-nuttx/nuttx
-./tools/configure.sh -l -a ../nuttx-apps esp32-sparrow-kit:nsh
-make -j$(nproc)
+mkdir -p ~/nuttxspace
+cd ~/nuttxspace
+git clone --branch=nuttx-12.5.1 https://github.com/apache/incubator-nuttx.git nuttx
+git clone --branch=nuttx-12.5.1 https://github.com/apache/incubator-nuttx-apps.git apps
 ```
 
-The successful build on this machine produced:
+## 4. Download bootloader and partition binaries
 
-- `/home/andrei/hectorwatch-nuttx/nuttx/nuttx`
-- `/home/andrei/hectorwatch-nuttx/nuttx/nuttx.hex`
-- `/home/andrei/hectorwatch-nuttx/nuttx/nuttx.bin`
+```sh
+cd ~/nuttxspace
+mkdir -p esp-bins
+curl -L "https://github.com/espressif/esp-nuttx-bootloader/releases/download/latest/bootloader-esp32.bin" -o esp-bins/bootloader-esp32.bin
+curl -L "https://github.com/espressif/esp-nuttx-bootloader/releases/download/latest/partition-table-esp32.bin" -o esp-bins/partition-table-esp32.bin
+python3 -m venv ~/nuttxspace/.venv
+source ~/nuttxspace/.venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install esptool pyserial
+```
 
-## Flash when the board is reconnected
+If Ubuntu reports `externally-managed-environment`, that is expected for the system Python. Use the virtual environment above instead of forcing a global install.
 
-Check the serial device:
+Before running `make`, export both required tool locations:
+
+```sh
+export PATH=$PATH:/opt/xtensa/xtensa-esp32-elf/bin:$HOME/nuttxspace/.venv/bin
+```
+
+## 5. Copy the Aura vest app into `apps`
+
+```sh
+rm -rf ~/nuttxspace/apps/examples/aura_vest
+cp -r /home/andrei/google-hackathon-2/module-a-vest-new ~/nuttxspace/apps/examples/aura_vest
+```
+
+Make sure `~/nuttxspace/apps/Make.defs` contains:
+
+```make
+ifneq ($(CONFIG_EXAMPLES_AURA_VEST),)
+CONFIGURED_APPS += examples/aura_vest
+endif
+```
+
+## 6. Configure NuttX for Sparrow
+
+If you use the repository `defconfig` at
+`/home/andrei/google-hackathon-2/defconfig`, you can avoid manual
+`menuconfig` completely.
+
+Fast path:
+
+```sh
+cd ~/nuttxspace
+cp /home/andrei/google-hackathon-2/defconfig nuttx/boards/xtensa/esp32/esp32-sparrow-kit/configs/nsh/defconfig
+cd nuttx
+make distclean
+./tools/configure.sh -l -a ../apps esp32-sparrow-kit:nsh
+make EXTRAFLAGS="-DESP32_IGNORE_CHIP_REVISION_CHECK" -j4
+```
+
+That repository `defconfig` is already Aura-ready. It includes the Sparrow lab
+wireless baseline plus the app enablement, GPIO driver, network support library,
+and the 4-device PWM layout expected by the vest firmware.
+
+It also disables the onboard RGB LED, I2S microphone, and SD-card/SPI2 support
+so those peripherals do not collide with the vest PWM and sensor pin map.
+
+Only use the interactive path below if you want to set those values through
+menus instead of editing the defconfig directly.
+
+```sh
+cd ~/nuttxspace/nuttx
+./tools/configure.sh -l -a ../apps esp32-sparrow-kit:nsh
+make menuconfig
+```
+
+Inside `menuconfig`, press `/` and search by symbol name without the
+`CONFIG_` prefix. Do not expect to see the README values as raw
+`CONFIG_...=y` lines.
+
+Useful search terms:
+
+- `EXAMPLES_AURA_VEST`
+- `DEV_GPIO`
+- `NET`
+- `NETDB_DNSCLIENT`
+- `ESP32_WIFI`
+- `WIRELESS_WAPI`
+- `ESP32_LEDC_CHANNEL0_PIN`
+
+Main paths:
+
+- `Application Configuration -> Examples -> Aura Vest embedded app`
+- `Device Drivers -> GPIO driver`
+- `Device Drivers -> Timer Driver Support`
+- `Networking Support`
+- `Library Routines -> NETDB Support`
+- `Application Configuration -> Network Utilities`
+- `Application Configuration -> Wireless Libraries and NSH Add-Ons`
+- `System Type -> ESP32 Peripheral Selection -> LEDC Configuration`
+
+Some symbols stay hidden until parent options are enabled. For example,
+the TCP and DNS options only appear after you enable `NET`.
+
+At minimum, enable:
+
+```text
+CONFIG_EXAMPLES_AURA_VEST=y
+CONFIG_DEV_GPIO=y
+CONFIG_PWM=y
+CONFIG_PWM_MULTICHAN=y
+CONFIG_TIMER=y
+CONFIG_NET=y
+CONFIG_NET_TCP=y
+CONFIG_NET_SOCKOPTS=y
+CONFIG_NETDB_DNSCLIENT=y
+CONFIG_NETUTILS_NETLIB=y
+CONFIG_ESP32_WIFI=y
+CONFIG_WIRELESS_WAPI=y
+CONFIG_ESP32_LEDC_CHANNEL0_PIN=25
+CONFIG_ESP32_LEDC_CHANNEL1_PIN=26
+CONFIG_ESP32_LEDC_CHANNEL2_PIN=27
+CONFIG_ESP32_LEDC_CHANNEL3_PIN=33
+```
+
+## 7. Build
+
+```sh
+make EXTRAFLAGS="-DESP32_IGNORE_CHIP_REVISION_CHECK" -j4
+```
+
+That `EXTRAFLAGS` workaround is required for the Sparrow boards used in the lab.
+
+## 8. Flash the board
+
+Find the serial device:
 
 ```sh
 ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null
 ```
 
-Typical serial devices seen on this machine before disconnect were `/dev/ttyACM0` and `/dev/ttyUSB0`.
-
-If flashing fails with `Permission denied` on `/dev/ttyUSB0` or `/dev/ttyACM0`, fix serial permissions first.
-
-Proper fix:
+If you get a permissions error later, fix serial access with:
 
 ```sh
 sudo usermod -aG dialout $USER
 newgrp dialout
 ```
 
-Then unplug and reconnect the board once.
-
-One-shot workaround for the current session:
+Optionally erase flash first:
 
 ```sh
-sudo chmod a+rw /dev/ttyUSB0
+esptool --chip esp32 --port /dev/ttyUSB0 erase-flash
 ```
 
-Put the ESP32 into download mode:
+Put the board in download mode:
 
 1. Hold `BOOT`
-2. Press `RESET` once
-3. Release `BOOT`
+2. Press `RESET`
+3. Release `BOOT` after the flashing connection is made
 
-Then flash:
-
-```sh
-cd /home/andrei/hectorwatch-nuttx/nuttx
-export PATH=/home/andrei/google-hackathon-2/.venv/bin:/home/andrei/.local/xtensa/xtensa-esp32-elf/bin:/home/andrei/.local/xtensa/xtensa-esp32s3-elf/bin:$PATH
-make flash ESPTOOL_PORT=/dev/ttyACM0 ESPTOOL_BAUD=921600
-```
-
-Reset once more after flashing so the board leaves download mode.
-
-The dry-run flash target for this board writes only the app image:
+Flash using the lab flow:
 
 ```sh
-esptool.py -c esp32 -p /dev/ttyACM0 -b 921600 write_flash -fs detect -fm dio -ff 40m 0x1000 nuttx.bin
+cd ~/nuttxspace/nuttx
+make flash ESPTOOL_PORT=/dev/ttyUSB0 ESPTOOL_BAUD=115200 ESPTOOL_BINDIR=../esp-bins
 ```
 
-## Open the NSH console
-
-Run:
+Alternative direct flash command:
 
 ```sh
-picocom -b 115200 /dev/ttyACM0
+esptool --chip esp32 --port /dev/ttyUSB0 --baud 921600 write-flash \
+  0x1000 ../esp-bins/bootloader-esp32.bin \
+  0x8000 ../esp-bins/partition-table-esp32.bin \
+  0x10000 nuttx.bin
 ```
 
-Press `Enter` a few times to wake NSH.
-
-## Run the demo
-
-At the NSH prompt:
+## 9. Open the serial console
 
 ```sh
-sparrow_demo
+picocom /dev/ttyUSB0 -b 115200
 ```
 
-The demo cycles the RGB LED, initializes the LTR308 and BME680, and prints sensor output while also drawing basic text through NX on the display.
+Press `Enter` until `nsh>` appears.
 
-## Current local patch state
+## 10. Connect the vest to WiFi and start the app
 
-- `/home/andrei/hectorwatch-nuttx/nuttx-apps` has a new `examples/sparrow_demo` directory
-- `/home/andrei/hectorwatch-nuttx/nuttx` has extra Sparrow config lines in the board `defconfig`
+At the `nsh>` prompt:
 
-## Current status
+```sh
+ifup wlan0
+wapi psk wlan0 YOUR_SSID YOUR_PASSWORD
+renew wlan0
+ifconfig wlan0
+aura_vest &
+```
 
-- `./tools/configure.sh -l -a ../nuttx-apps esp32-sparrow-kit:nsh` succeeds
-- `make -j4` succeeds and generates `nuttx.bin`
-- The only compile-time issue left is a non-fatal warning in `sparrow_demo_main.c` about a struct initializer brace style
+Read the IP address from `ifconfig wlan0`.
 
-`kconfig-frontends` is no longer a blocker on this machine.
+## 11. Connect Android to the vest
+
+In the Android app, enter:
+
+```text
+http://<sparrow-ip>:8080
+```
+
+and tap `APPLY VEST URL`.
+
+The vest uses WiFi. The watch remains on BLE.

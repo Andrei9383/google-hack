@@ -3,6 +3,8 @@ package com.google.aura.watch.ble
 import java.util.UUID
 
 object BleConstants {
+    const val WATCH_DEVICE_NAME = "AURA Watch"
+
     val VEST_SERVICE_UUID: UUID = UUID.fromString("2E6A0000-C4B2-4D6E-A591-7F8B2D3E1A00")
     val VEST_SENSOR_CHARACTERISTIC_UUID: UUID = UUID.fromString("2E6A0001-C4B2-4D6E-A591-7F8B2D3E1A00")
     val VEST_HAPTIC_CHARACTERISTIC_UUID: UUID = UUID.fromString("2E6A0002-C4B2-4D6E-A591-7F8B2D3E1A00")

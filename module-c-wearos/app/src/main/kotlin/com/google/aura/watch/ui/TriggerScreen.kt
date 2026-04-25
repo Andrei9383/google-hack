@@ -1,13 +1,15 @@
 package com.google.aura.watch.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -27,25 +29,59 @@ fun TriggerScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .clickable(onClick = onTrigger),
+            .padding(18.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
             Text(
-                text = "DESCRIBE\nSURROUNDINGS",
+                text = "AURA WATCH",
                 color = Color.White,
-                fontSize = 24.sp,
+                fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
             )
-            Spacer(modifier = Modifier.height(24.dp))
+
+            Text(
+                text = if (isConnected) "Phone connected" else "Waiting for phone",
+                color = if (isConnected) Color(0xFFB7FFD8) else Color(0xFFFFC8C0),
+                fontSize = 12.sp,
+                textAlign = TextAlign.Center,
+            )
+
+            Button(
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF2FD08C),
+                    contentColor = Color(0xFF04140D),
+                ),
+                modifier = Modifier.size(120.dp),
+                onClick = onTrigger,
+                shape = CircleShape,
+            ) {
+                Text(
+                    text = "SPEAK\nOBJECTS",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Black,
+                    textAlign = TextAlign.Center,
+                )
+            }
+
             Box(
                 modifier = Modifier
                     .size(12.dp)
                     .background(
                         color = if (isConnected) Color(0xFF2FD08C) else Color(0xFFF26B5E),
-                        shape = androidx.compose.foundation.shape.CircleShape,
+                        shape = CircleShape,
                     ),
+            )
+
+            Text(
+                text = "Press the button or shake your wrist to have the phone describe what it sees.",
+                color = Color(0xFFD8E7EE),
+                fontSize = 11.sp,
+                textAlign = TextAlign.Center,
             )
         }
     }

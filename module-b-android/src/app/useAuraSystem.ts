@@ -2,8 +2,9 @@ import * as Battery from 'expo-battery';
 import { useEffect, useMemo, useRef } from 'react';
 import { AppState } from 'react-native';
 
-import { AuraBleManager } from '../ble/BLEManager';
+import { DEFAULT_VEST_BASE_URL } from '../ble/constants';
 import { VEST_STATUS_LABELS, type VestStatusCode } from '../ble/VestProtocol';
+import { AuraConnectivityManager } from '../connectivity/AuraConnectivityManager';
 import { fuseSensorData } from '../fusion/SensorFusion';
 import {
   hasNativeAuraModule,
@@ -31,7 +32,7 @@ function announcementForVestStatus(status: VestStatusCode): string | null {
 }
 
 export function useAuraSystem(cameraGranted: boolean) {
-  const bleManagerRef = useRef<AuraBleManager | null>(null);
+  const connectivityManagerRef = useRef<AuraConnectivityManager | null>(null);
 
   const setCameraActive = useSystemStore((state) => state.setCameraActive);
   const setPhoneBatteryLevel = useSystemStore((state) => state.setPhoneBatteryLevel);
@@ -43,6 +44,7 @@ export function useAuraSystem(cameraGranted: boolean) {
   const setLastScene = useSystemStore((state) => state.setLastScene);
   const setLastError = useSystemStore((state) => state.setLastError);
   const setOverride = useSystemStore((state) => state.setOverride);
+  const vestBaseUrl = useSystemStore((state) => state.vestBaseUrl || DEFAULT_VEST_BASE_URL);
 
   const describeSceneNow = useEventCallback(async () => {
     const snapshot = useSystemStore.getState();
@@ -51,14 +53,9 @@ export function useAuraSystem(cameraGranted: boolean) {
     await speak(description, 'scene');
   });
 
-  const connectBoard = useEventCallback(() => {
-    setLastError(null);
-    void bleManagerRef.current?.connectBoard();
-  });
-
   const handleVisionDetections = useEventCallback(
-    async (detections: NativeDetectedObject[], frameWidth: number, frameHeight: number) => {
-      const filtered = filterDetections(detections, frameWidth, frameHeight);
+    async (detections: NativeDetectedObject[], frameWidth: number) => {
+      const filtered = filterDetections(detections, frameWidth);
       setDetections(filtered);
 
       const snapshot = useSystemStore.getState();
@@ -69,11 +66,13 @@ export function useAuraSystem(cameraGranted: boolean) {
       });
 
       for (const override of fusionOutput.hapticOverrides) {
-        await bleManagerRef.current?.sendHapticOverride(override.zone, override.tier);
+        await connectivityManagerRef.current?.sendHapticOverride(override.zone, override.tier);
         setOverride(override.zone, { tier: override.tier, timestamp: Date.now() });
       }
 
-      setLastScene(formatSceneDescription(filtered, snapshot.vestSensorData));
+      if (filtered.length > 0) {
+        setLastScene(formatSceneDescription(filtered, snapshot.vestSensorData));
+      }
     },
   );
 
@@ -98,7 +97,7 @@ export function useAuraSystem(cameraGranted: boolean) {
   }, [announceSystem, cameraGranted, setCameraActive]);
 
   useEffect(() => {
-    const bleManager = new AuraBleManager({
+    const connectivityManager = new AuraConnectivityManager({
       onVestSensorData: (sensorData) => {
         setVestSensorData(sensorData);
         setLastError(null);
@@ -122,11 +121,11 @@ export function useAuraSystem(cameraGranted: boolean) {
       onError: (message) => {
         setLastError(message);
       },
-    });
+    }, vestBaseUrl);
 
-    bleManagerRef.current = bleManager;
-    bleManager.start();
-    void startForegroundServiceAsync('Aura active', 'Monitoring surroundings and BLE devices.');
+    connectivityManagerRef.current = connectivityManager;
+    connectivityManager.start();
+    void startForegroundServiceAsync('Aura active', 'Monitoring the WiFi vest and BLE watch.');
 
     const appStateSubscription = AppState.addEventListener('change', (status) => {
       if (status === 'active') {
@@ -145,11 +144,11 @@ export function useAuraSystem(cameraGranted: boolean) {
     return () => {
       batterySubscription.remove();
       appStateSubscription.remove();
-      bleManager.destroy();
-      bleManagerRef.current = null;
+      connectivityManager.destroy();
+      connectivityManagerRef.current = null;
       void stopForegroundServiceAsync();
     };
-  }, [announceSystem, describeSceneNow, setLastError, setPhoneBatteryLevel, setVestConnected, setVestSensorData, setVestStatus, setWatchConnected]);
+  }, [announceSystem, describeSceneNow, setLastError, setPhoneBatteryLevel, setVestConnected, setVestSensorData, setVestStatus, setWatchConnected, vestBaseUrl]);
 
   useEffect(() => {
     if (!hasNativeAuraModule) {
@@ -160,11 +159,10 @@ export function useAuraSystem(cameraGranted: boolean) {
   return useMemo(
     () => ({
       describeSceneNow,
-      connectBoard,
       handleVisionDetections,
       handleVisionError,
       vestStatusLabel: VEST_STATUS_LABELS[useSystemStore.getState().vestStatus],
     }),
-    [connectBoard, describeSceneNow, handleVisionDetections, handleVisionError],
+    [describeSceneNow, handleVisionDetections, handleVisionError],
   );
 }
