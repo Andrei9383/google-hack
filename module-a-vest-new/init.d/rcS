@@ -1,0 +1,4 @@
+#!/bin/nsh
+
+echo "Starting Aura Vest"
+aura_vest &

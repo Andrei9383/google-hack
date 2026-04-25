@@ -1,0 +1,61 @@
+menuconfig EXAMPLES_AURA_VEST
+       tristate "Aura Vest embedded app"
+       default n
+       ---help---
+               Enable the Project Aura vest app. The app polls three
+               ultrasonic sensors, drives four one-direction vibration motors
+               through one L293D four-channel driver, and exposes the BLE
+               payload contract used by module-b-android.
+
+if EXAMPLES_AURA_VEST
+
+config EXAMPLES_AURA_VEST_TRIG_LEFT_DEV
+       string "Left ultrasonic trigger GPIO device"
+       default "/dev/gpio0"
+
+config EXAMPLES_AURA_VEST_ECHO_LEFT_DEV
+       string "Left ultrasonic echo GPIO device"
+       default "/dev/gpio3"
+
+config EXAMPLES_AURA_VEST_TRIG_CENTER_DEV
+       string "Center ultrasonic trigger GPIO device"
+       default "/dev/gpio1"
+
+config EXAMPLES_AURA_VEST_ECHO_CENTER_DEV
+       string "Center ultrasonic echo GPIO device"
+       default "/dev/gpio4"
+
+config EXAMPLES_AURA_VEST_TRIG_RIGHT_DEV
+       string "Right ultrasonic trigger GPIO device"
+       default "/dev/gpio2"
+
+config EXAMPLES_AURA_VEST_ECHO_RIGHT_DEV
+       string "Right ultrasonic echo GPIO device"
+       default "/dev/gpio5"
+
+config EXAMPLES_AURA_VEST_MOTOR_LEFT_DEV
+       string "Left motor L293D input PWM device"
+       default "/dev/pwm0"
+
+config EXAMPLES_AURA_VEST_MOTOR_CENTER_LEFT_DEV
+       string "Center-left motor L293D input PWM device"
+       default "/dev/pwm1"
+
+config EXAMPLES_AURA_VEST_MOTOR_CENTER_RIGHT_DEV
+       string "Center-right motor L293D input PWM device"
+       default "/dev/pwm2"
+
+config EXAMPLES_AURA_VEST_MOTOR_RIGHT_DEV
+       string "Right motor L293D input PWM device"
+       default "/dev/pwm3"
+
+config EXAMPLES_AURA_VEST_MAX_MOTOR_DUTY
+       int "Maximum motor PWM duty"
+       default 255
+       range 0 255
+       ---help---
+               Limits the strongest motor command before it is sent to PWM.
+               Set this lower when the L293D motor supply is higher than the
+               small vibration motor's rated voltage.
+
+endif

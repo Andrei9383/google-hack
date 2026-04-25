@@ -1,0 +1,3 @@
+ifneq ($(CONFIG_EXAMPLES_AURA_VEST),)
+CONFIGURED_APPS += examples/aura_vest
+endif
