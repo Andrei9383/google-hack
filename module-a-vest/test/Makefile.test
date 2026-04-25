@@ -1,0 +1,36 @@
+CC ?= gcc
+CFLAGS ?= -std=c11 -Wall -Wextra -Werror -I../src
+
+SRC = \
+	../src/system_init.c \
+	../src/sensor/hcsr04.c \
+	../src/sensor/sensor_manager.c \
+	../src/motor/pwm_driver.c \
+	../src/motor/haptic_patterns.c \
+	../src/motor/haptic_controller.c \
+	../src/ble/ble_payload.c \
+	../src/ble/ble_handlers.c \
+	../src/ble/ble_init.c \
+	../src/power/battery_adc.c \
+	../src/power/power_manager.c \
+	../src/timing/scheduler.c
+
+TESTS = \
+	test_runner.c \
+	test_distance_conversion.c \
+	test_dc_motor_output.c \
+	test_haptic_mapping.c \
+	test_ble_payload_encoding.c \
+	test_haptic_patterns.c \
+	test_override_state.c
+
+all: aura_vest_tests
+
+aura_vest_tests: $(SRC) $(TESTS)
+	$(CC) $(CFLAGS) $(SRC) $(TESTS) -o $@
+
+run: aura_vest_tests
+	./aura_vest_tests
+
+clean:
+	rm -f aura_vest_tests

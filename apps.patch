@@ -1,0 +1,486 @@
+diff --git a/examples/sparrow_demo/Kconfig b/examples/sparrow_demo/Kconfig
+new file mode 100644
+index 000000000..7074f439f
+--- /dev/null
++++ b/examples/sparrow_demo/Kconfig
+@@ -0,0 +1,5 @@
++config EXAMPLES_SPARROW_DEMO
++	tristate "Sparrow Board Super-Demo"
++	default n
++	---help---
++		Enable the Sparrow Board Super-Demo.
+diff --git a/examples/sparrow_demo/Make.defs b/examples/sparrow_demo/Make.defs
+new file mode 100644
+index 000000000..fb549a5e4
+--- /dev/null
++++ b/examples/sparrow_demo/Make.defs
+@@ -0,0 +1,3 @@
++ifneq ($(CONFIG_EXAMPLES_SPARROW_DEMO),)
++CONFIGURED_APPS += examples/sparrow_demo
++endif
+diff --git a/examples/sparrow_demo/Makefile b/examples/sparrow_demo/Makefile
+new file mode 100644
+index 000000000..806623db8
+--- /dev/null
++++ b/examples/sparrow_demo/Makefile
+@@ -0,0 +1,10 @@
++include $(APPDIR)/Make.defs
++
++PROGNAME = sparrow_demo
++PRIORITY = SCHED_PRIORITY_DEFAULT
++STACKSIZE = 2048
++MODULE = $(CONFIG_EXAMPLES_SPARROW_DEMO)
++
++MAINSRC = sparrow_demo_main.c
++
++include $(APPDIR)/Application.mk
+diff --git a/examples/sparrow_demo/sparrow_demo_main.c b/examples/sparrow_demo/sparrow_demo_main.c
+new file mode 100644
+index 000000000..5e85e9d8d
+--- /dev/null
++++ b/examples/sparrow_demo/sparrow_demo_main.c
+@@ -0,0 +1,444 @@
++#include <nuttx/config.h>
++#include <stdio.h>
++#include <fcntl.h>
++#include <unistd.h>
++#include <sys/ioctl.h>
++#include <poll.h>
++#if defined(CONFIG_SENSORS)
++#  include <nuttx/sensors/sensor.h>
++#endif
++
++#if defined(CONFIG_SENSORS) && defined(CONFIG_SENSORS_LTR308)
++#  include <nuttx/sensors/ltr308.h>
++#endif
++
++#if defined(CONFIG_SENSORS) && defined(CONFIG_SENSORS_BME680)
++#  include <nuttx/sensors/bme680.h>
++#endif
++
++#ifdef CONFIG_NX
++#  include <sys/boardctl.h>
++#  include <semaphore.h>
++#  include <nuttx/nx/nx.h>
++#  include <nuttx/nx/nxglib.h>
++#  include <nuttx/nx/nxfonts.h>
++
++struct sparrow_demo_nx_s
++{
++  NXHANDLE hnx;
++  NXWINDOW hbkgd;
++  NXHANDLE hfont;
++  bool connected;
++  int xres;
++  int yres;
++  bool havepos;
++  sem_t eventsem;
++};
++static struct sparrow_demo_nx_s g_nxdata = { NULL, NULL, NULL, false, 0, 0, false, {0} };
++
++static void sparrow_demo_redraw(NXWINDOW hwnd, FAR const struct nxgl_rect_s *rect,
++                        bool more, FAR void *arg)
++{
++}
++
++static void sparrow_demo_position(NXWINDOW hwnd, FAR const struct nxgl_size_s *size,
++                          FAR const struct nxgl_point_s *pos,
++                          FAR const struct nxgl_rect_s *bounds,
++                          FAR void *arg)
++{
++  if (!g_nxdata.havepos)
++    {
++      g_nxdata.hbkgd = hwnd;
++      g_nxdata.xres = bounds->pt2.x + 1;
++      g_nxdata.yres = bounds->pt2.y + 1;
++      g_nxdata.havepos = true;
++      sem_post(&g_nxdata.eventsem);
++    }
++}
++
++const struct nx_callback_s g_sparrow_cb =
++{
++  sparrow_demo_redraw,   /* redraw */
++  sparrow_demo_position  /* position */
++};
++
++static FAR void *sparrow_demo_listener(FAR void *arg)
++{
++  int ret;
++  for (;;)
++    {
++      ret = nx_eventhandler(g_nxdata.hnx);
++      if (ret < 0)
++        {
++          break;
++        }
++      if (!g_nxdata.connected)
++        {
++          g_nxdata.connected = true;
++          sem_post(&g_nxdata.eventsem);
++        }
++    }
++  return NULL;
++}
++
++static void sparrow_demo_print(NXWINDOW hwnd, const char *text, int line, bool center)
++{
++  FAR const struct nx_font_s *fontset;
++  FAR const struct nx_fontbitmap_s *fbm;
++  FAR uint8_t *glyph;
++  FAR const char *ptr;
++  FAR struct nxgl_point_s pos;
++  FAR struct nxgl_rect_s dest;
++  FAR const void *src[1];
++  unsigned int glyphsize;
++  unsigned int mxstride;
++
++  fontset = nxf_getfontset(g_nxdata.hfont);
++  mxstride  = (fontset->mxwidth + 7) >> 3;
++  glyphsize = (unsigned int)fontset->mxheight * mxstride;
++  glyph     = (FAR uint8_t*)malloc(glyphsize);
++
++  if (!glyph) return;
++
++  if (center)
++    {
++      pos.x = (g_nxdata.xres - (strlen(text) * 5)) / 2;
++      if (pos.x < 0) pos.x = 0;
++    }
++  else
++    {
++      pos.x = 0;
++    }
++  pos.y = line * fontset->mxheight;
++
++  for (ptr = text; *ptr; ptr++)
++    {
++      fbm = nxf_getbitmap(g_nxdata.hfont, *ptr);
++      if (fbm)
++        {
++          uint8_t fheight = fbm->metric.height + fbm->metric.yoffset;
++          uint8_t fwidth  = fbm->metric.width + fbm->metric.xoffset;
++          uint8_t fstride = (fwidth + 7) >> 3;
++
++          memset(glyph, 0, glyphsize);
++          nxf_convert_1bpp((FAR nxgl_mxpixel_t*)glyph, fheight, fwidth, fstride, fbm, 1);
++
++          dest.pt1.x = pos.x;
++          dest.pt1.y = pos.y;
++          dest.pt2.x = pos.x + fwidth - 1;
++          dest.pt2.y = pos.y + fheight - 1;
++
++          src[0] = glyph;
++          nx_bitmap((NXWINDOW)hwnd, &dest, src, &pos, fstride);
++          pos.x += fwidth;
++        }
++      else
++        {
++          pos.x += fontset->spwidth;
++        }
++    }
++  free(glyph);
++}
++
++static void sparrow_demo_clear(void)
++{
++  struct nxgl_rect_s rect;
++  nxgl_mxpixel_t color = 0;
++  
++  rect.pt1.x = 0;
++  rect.pt1.y = 0;
++  rect.pt2.x = g_nxdata.xres - 1;
++  rect.pt2.y = g_nxdata.yres - 1;
++  
++  nx_fill(g_nxdata.hbkgd, &rect, &color);
++}
++#endif
++
++int main(int argc, FAR char *argv[])
++{
++#if defined(CONFIG_SENSORS) && defined(CONFIG_SENSORS_BME680)
++  int baro_fd = -1;
++#endif
++#if defined(CONFIG_SENSORS) && defined(CONFIG_SENSORS_LTR308)
++  int ltr_fd = -1;
++#endif
++  int led_fd = -1;
++#if defined(CONFIG_SENSORS)
++  struct pollfd pfd;
++#endif
++  int ret;
++  int i;
++
++#ifdef CONFIG_NX
++  /* Initialize NX */
++  ret = boardctl(BOARDIOC_NX_START, 0);
++  if (ret < 0)
++    {
++      printf("Failed to start NX server: %d\n", errno);
++    }
++  else
++    {
++      g_nxdata.hnx = nx_connect();
++      if (!g_nxdata.hnx)
++        {
++          printf("nx_connect failed\n");
++        }
++      else
++        {
++          pthread_t thread;
++          pthread_create(&thread, NULL, sparrow_demo_listener, NULL);
++
++          while (!g_nxdata.connected)
++            {
++              sem_wait(&g_nxdata.eventsem);
++            }
++
++          g_nxdata.hfont = nxf_getfonthandle(0);
++          
++          ret = nx_requestbkgd(g_nxdata.hnx, &g_sparrow_cb, NULL);
++          if (ret < 0)
++            {
++              printf("nx_requestbkgd failed\n");
++            }
++          else
++            {
++              while (!g_nxdata.havepos)
++                {
++                  sem_wait(&g_nxdata.eventsem);
++                }
++              
++              sparrow_demo_clear();
++              
++              /* Screen 1: Sparrow Demo Centered */
++              sparrow_demo_print(g_nxdata.hbkgd, "Sparrow Demo", 1, true);
++              sleep(2);
++              sparrow_demo_clear();
++            }
++        }
++    }
++#endif
++
++  printf("Starting Sparrow Demo (LED + Sensors)...\n");
++
++  /* LED Test */
++  printf("Opening RGB LED...\n");
++#ifdef CONFIG_NX
++  sparrow_demo_clear();
++  sparrow_demo_print(g_nxdata.hbkgd, "Init LED...", 0, false);
++#endif
++  led_fd = open("/dev/rgbled0", O_WRONLY);
++  if (led_fd >= 0)
++    {
++#ifdef CONFIG_NX
++      sparrow_demo_print(g_nxdata.hbkgd, "LED OK", 1, false);
++      sleep(1);
++#endif
++      printf("LED Test: Red\n");
++#ifdef CONFIG_NX
++      sparrow_demo_clear();
++      sparrow_demo_print(g_nxdata.hbkgd, "LED: Red", 0, false);
++#endif
++      write(led_fd, "#FF0000", 8);
++      sleep(1);
++      
++      printf("LED Test: Green\n");
++#ifdef CONFIG_NX
++      sparrow_demo_clear();
++      sparrow_demo_print(g_nxdata.hbkgd, "LED: Green", 0, false);
++#endif
++      write(led_fd, "#00FF00", 8);
++      sleep(1);
++      
++      printf("LED Test: Blue\n");
++#ifdef CONFIG_NX
++      sparrow_demo_clear();
++      sparrow_demo_print(g_nxdata.hbkgd, "LED: Blue", 0, false);
++#endif
++      write(led_fd, "#0000FF", 8);
++      sleep(1);
++      
++      printf("LED Test: Off\n");
++#ifdef CONFIG_NX
++      sparrow_demo_clear();
++      sparrow_demo_print(g_nxdata.hbkgd, "LED: Off", 0, false);
++#endif
++      write(led_fd, "#000000", 8);
++      close(led_fd);
++    }
++  else
++    {
++      printf("Failed to open /dev/rgbled0\n");
++#ifdef CONFIG_NX
++      sparrow_demo_print(g_nxdata.hbkgd, "LED Fail", 1, false);
++      sleep(1);
++#endif
++    }
++
++  /* Sensor Initialization */
++#if defined(CONFIG_SENSORS) && defined(CONFIG_SENSORS_LTR308)
++  printf("Opening LTR308...\n");
++#ifdef CONFIG_NX
++  sparrow_demo_clear();
++  sparrow_demo_print(g_nxdata.hbkgd, "Init LTR308...", 0, false);
++#endif
++  ltr_fd = open("/dev/uorb/sensor_light0", O_RDONLY);
++  if (ltr_fd < 0)
++    {
++      printf("Failed to open LTR308\n");
++#ifdef CONFIG_NX
++      sparrow_demo_print(g_nxdata.hbkgd, "LTR308 Fail", 1, false);
++      sleep(1);
++#endif
++    }
++  else
++    {
++      printf("LTR308 opened successfully.\n");
++#ifdef CONFIG_NX
++      sparrow_demo_print(g_nxdata.hbkgd, "LTR308 OK", 1, false);
++      sleep(1);
++#endif
++      struct ltr308_calibval calibval;
++      calibval.integration_time = 1;
++      calibval.measurement_rate = 2;
++      calibval.gain = 1;
++      if (ioctl(ltr_fd, SNIOC_CALIBRATE, &calibval) < 0)
++        {
++          perror("LTR308 calibration failed");
++        }
++    }
++#endif
++
++#if defined(CONFIG_SENSORS) && defined(CONFIG_SENSORS_BME680)
++  printf("Opening BME680 Baro...\n");
++#ifdef CONFIG_NX
++  sparrow_demo_clear();
++  sparrow_demo_print(g_nxdata.hbkgd, "Init BME680...", 0, false);
++#endif
++  baro_fd = open("/dev/uorb/sensor_baro0", O_RDONLY | O_NONBLOCK);
++  if (baro_fd < 0)
++    {
++      printf("Failed to open BME680 Baro\n");
++#ifdef CONFIG_NX
++      sparrow_demo_print(g_nxdata.hbkgd, "BME680 Fail", 1, false);
++      sleep(1);
++#endif
++    }
++  else
++    {
++      printf("BME680 Baro opened successfully.\n");
++#ifdef CONFIG_NX
++      sparrow_demo_print(g_nxdata.hbkgd, "BME680 OK", 1, false);
++      sleep(1);
++#endif
++      struct bme680_config_s config;
++      config.temp_os = BME680_OS_2X;
++      config.press_os = BME680_OS_16X;
++      config.filter_coef = BME680_FILTER_COEF3;
++      config.hum_os = BME680_OS_1X;
++      config.target_temp = 300;
++      config.amb_temp = 30;
++      config.heater_duration = 100;
++      config.nb_conv = 0;
++      if (ioctl(baro_fd, SNIOC_CALIBRATE, &config) < 0)
++        {
++          perror("BME680 calibration failed");
++        }
++    }
++#endif
++
++  /* Sensor Reading Loop */
++  
++#if defined(CONFIG_SENSORS) && defined(CONFIG_SENSORS_LTR308)
++  if (ltr_fd >= 0)
++    {
++#ifdef CONFIG_NX
++      sparrow_demo_clear();
++      sparrow_demo_print(g_nxdata.hbkgd, "LTR308 Light", 0, false);
++#endif
++      for (i = 0; i < 3; i++)
++        {
++          pfd.fd = ltr_fd;
++          pfd.events = POLLIN;
++          ret = poll(&pfd, 1, 5000);
++          if (ret > 0 && (pfd.revents & POLLIN))
++            {
++              struct sensor_light light;
++              if (read(ltr_fd, &light, sizeof(struct sensor_light)) == sizeof(struct sensor_light))
++                {
++                  printf("Light: %.2f lux\n", light.light);
++#ifdef CONFIG_NX
++                  char buf[32];
++                  snprintf(buf, sizeof(buf), "L%d: %.1f lux", i + 1, light.light);
++                  sparrow_demo_print(g_nxdata.hbkgd, buf, i + 1, false);
++#endif
++                }
++              else
++                {
++                  printf("Failed to read LTR308\n");
++                }
++            }
++          else
++            {
++              printf("Poll LTR308 failed or timed out: %d\n", ret);
++            }
++          sleep(1);
++        }
++      sleep(2);
++    }
++#endif
++
++#if defined(CONFIG_SENSORS) && defined(CONFIG_SENSORS_BME680)
++  if (baro_fd >= 0)
++    {
++#ifdef CONFIG_NX
++      sparrow_demo_clear();
++      sparrow_demo_print(g_nxdata.hbkgd, "BME680 Baro", 0, false);
++#endif
++      for (i = 0; i < 3; i++)
++        {
++          pfd.fd = baro_fd;
++          pfd.events = POLLIN;
++          ret = poll(&pfd, 1, 5000);
++          if (ret > 0 && (pfd.revents & POLLIN))
++            {
++              struct sensor_baro baro;
++              if (read(baro_fd, &baro, sizeof(struct sensor_baro)) == sizeof(struct sensor_baro))
++                {
++                  printf("Temp: %.2f C, Press: %.2f hPa\n", baro.temperature, baro.pressure);
++#ifdef CONFIG_NX
++                  char buf[32];
++                  snprintf(buf, sizeof(buf), "T%d:%.1fC P:%.0f", i + 1, baro.temperature, baro.pressure);
++                  sparrow_demo_print(g_nxdata.hbkgd, buf, i + 1, false);
++#endif
++                }
++              else
++                {
++                  printf("Failed to read BME680 Baro\n");
++                }
++            }
++          else
++            {
++              printf("Poll BME680 failed or timed out: %d\n", ret);
++            }
++          sleep(1);
++        }
++      sleep(2);
++    }
++#endif
++
++#if defined(CONFIG_SENSORS) && defined(CONFIG_SENSORS_LTR308)
++  if (ltr_fd >= 0) close(ltr_fd);
++#endif
++#if defined(CONFIG_SENSORS) && defined(CONFIG_SENSORS_BME680)
++  if (baro_fd >= 0) close(baro_fd);
++#endif
++
++#ifdef CONFIG_NX
++  sparrow_demo_clear();
++  sparrow_demo_print(g_nxdata.hbkgd, "Demo end", 1, true);
++  sleep(2);
++  sparrow_demo_clear();
++#endif
++
++  return 0;
++}

@@ -1,0 +1,13 @@
+Aura Vest Motor Driver (per zone)
+
+MCU PWM GPIO -------- Motor driver PWM/EN input
+MCU GND ------------- Motor driver GND
+Battery + ----------- Motor driver VM/VBAT
+Battery GND --------- Motor driver GND
+Motor driver OUT1 --- DC motor terminal A
+Motor driver OUT2 --- DC motor terminal B
+
+If the driver exposes a DIR input and you only need vibration, tie direction to a fixed level and drive only the PWM/enable input.
+If you use a plain brushed DC motor, add a small eccentric weight to the shaft so the motor produces vibration.
+
+Repeat for left, center, and right zones.

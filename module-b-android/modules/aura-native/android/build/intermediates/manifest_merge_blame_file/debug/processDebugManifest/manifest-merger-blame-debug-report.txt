@@ -1,0 +1,19 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="expo.modules.auranative" >
+4
+5    <uses-sdk android:minSdkVersion="26" />
+6
+7    <application>
+7-->/home/andrei/google-hackathon-2/module-b-android/modules/aura-native/android/src/main/AndroidManifest.xml:2:2-7:16
+8        <service
+8-->/home/andrei/google-hackathon-2/module-b-android/modules/aura-native/android/src/main/AndroidManifest.xml:3:3-6:61
+9            android:name="expo.modules.auranative.AuraForegroundService"
+9-->/home/andrei/google-hackathon-2/module-b-android/modules/aura-native/android/src/main/AndroidManifest.xml:4:4-41
+10            android:exported="false"
+10-->/home/andrei/google-hackathon-2/module-b-android/modules/aura-native/android/src/main/AndroidManifest.xml:5:4-28
+11            android:foregroundServiceType="connectedDevice|camera" />
+11-->/home/andrei/google-hackathon-2/module-b-android/modules/aura-native/android/src/main/AndroidManifest.xml:6:4-58
+12    </application>
+13
+14</manifest>

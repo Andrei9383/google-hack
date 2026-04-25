@@ -1,0 +1,21 @@
+diff --git a/boards/xtensa/esp32/esp32-sparrow-kit/configs/nsh/defconfig b/boards/xtensa/esp32/esp32-sparrow-kit/configs/nsh/defconfig
+index 6e3fd40b45..8b6816f0f6 100644
+--- a/boards/xtensa/esp32/esp32-sparrow-kit/configs/nsh/defconfig
++++ b/boards/xtensa/esp32/esp32-sparrow-kit/configs/nsh/defconfig
+@@ -105,3 +105,15 @@ CONFIG_SYSTEM_NSH=y
+ CONFIG_TIMER=y
+ CONFIG_UART0_SERIAL_CONSOLE=y
+ CONFIG_VIDEO_FB=y
++CONFIG_EXAMPLES_SPARROW_DEMO=y
++CONFIG_NX=y
++CONFIG_NX_BLOCKING=y
++CONFIG_MQ_MAXMSGSIZE=64
++CONFIG_NXFONT_MONO5X8=y
++CONFIG_NX_DISABLE_1BPP=n
++CONFIG_NXFONTS_DISABLE_1BPP=n
++CONFIG_EXAMPLES_NXHELLO=y
++CONFIG_EXAMPLES_NXHELLO_BPP=1
++
++# Bypass chip revision check
++CONFIG_ESP32_IGNORE_CHIP_REVISION_CHECK=y
+\ No newline at end of file

@@ -1,0 +1,6 @@
+<resources>
+    <color name="aura_background">#000000</color>
+    <color name="aura_connected">#2FD08C</color>
+    <color name="aura_disconnected">#F26B5E</color>
+    <color name="aura_text">#FFFFFF</color>
+</resources>

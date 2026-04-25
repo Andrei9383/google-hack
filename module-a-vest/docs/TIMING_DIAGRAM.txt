@@ -1,0 +1,10 @@
+100ms poll cycle
+
+0ms    trigger left
+5ms    read left
+33ms   trigger center
+38ms   read center
+66ms   trigger right
+71ms   read right
+95ms   publish BLE payload and refresh motor outputs
+100ms  repeat
