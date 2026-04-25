@@ -26,8 +26,8 @@ interface CameraProcessorProps {
   style?: StyleProp<ViewStyle>;
 }
 
-const INITIAL_CAPTURE_DELAY_MS = 900;
-const CAPTURE_INTERVAL_MS = 1400;
+const INITIAL_CAPTURE_DELAY_MS = 600;
+const CAPTURE_INTERVAL_MS = 1100;
 
 export function CameraProcessor({
   enabled,
@@ -59,8 +59,9 @@ export function CameraProcessor({
 
       try {
         const picture = await cameraRef.current.takePictureAsync({
-          quality: 0.6,
-          skipProcessing: true,
+          quality: 0.65,
+          skipProcessing: false,
+          shutterSound: false,
         });
 
         if (picture?.uri) {

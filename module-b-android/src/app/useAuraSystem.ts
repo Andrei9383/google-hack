@@ -73,9 +73,7 @@ export function useAuraSystem(cameraGranted: boolean) {
         setOverride(override.zone, { tier: override.tier, timestamp: Date.now() });
       }
 
-      if (filtered.length > 0) {
-        setLastScene(formatSceneDescription(filtered, snapshot.vestSensorData));
-      }
+      setLastScene(formatSceneDescription(filtered, snapshot.vestSensorData));
     },
   );
 

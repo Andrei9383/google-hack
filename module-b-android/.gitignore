@@ -2,6 +2,8 @@
 
 # dependencies
 node_modules/
+modules/aura-native/android/build/
+# modules/aura-native/android/build/
 
 # Expo
 .expo/

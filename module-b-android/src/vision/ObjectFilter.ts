@@ -9,6 +9,22 @@ export interface SceneDetection extends NativeDetectedObject {
 }
 
 const GENERIC_LABELS = new Set(['fashion good', 'home good', 'object', 'unknown']);
+const SCENE_ONLY_LABELS = new Set([
+  'atmosphere',
+  'ceiling',
+  'cloud',
+  'daytime',
+  'floor',
+  'horizon',
+  'lighting',
+  'room',
+  'running',
+  'sky',
+  'sitting',
+  'standing',
+  'wall',
+  'walking',
+]);
 const DANGER_LABELS = new Set(['person', 'bicycle', 'motorcycle', 'car']);
 const DYNAMIC_LABELS = new Set(['dog', 'cat', 'bird', 'sports ball', 'animal']);
 
@@ -40,7 +56,7 @@ export function filterDetections(
   return detections
     .map(withBestAvailableLabel)
     .filter((detection) => detection.label.trim().length > 0)
-    .filter((detection) => !GENERIC_LABELS.has(normalizeLabel(detection.label)))
+    .filter((detection) => isActionableLabel(detection.label))
     .filter((detection) => detection.confidence >= VISION_CONFIDENCE_THRESHOLD)
     .filter((detection) => isUsableBox(detection.boundingBox, frameWidth, frameHeight))
     .map((detection) => ({
@@ -70,7 +86,7 @@ function withBestAvailableLabel(detection: NativeDetectedObject): NativeDetected
   const alternatives = detection.alternativeLabels ?? [];
   const currentLabel = normalizeLabel(detection.label);
 
-  if (!GENERIC_LABELS.has(currentLabel)) {
+  if (isActionableLabel(currentLabel)) {
     return {
       ...detection,
       label: readableLabel(detection.label),
@@ -78,7 +94,7 @@ function withBestAvailableLabel(detection: NativeDetectedObject): NativeDetected
   }
 
   const detailedLabel = alternatives
-    .filter((label) => !GENERIC_LABELS.has(normalizeLabel(label.text)))
+    .filter((label) => isActionableLabel(label.text))
     .sort((a, b) => b.confidence - a.confidence)[0];
 
   if (!detailedLabel) {
@@ -94,6 +110,12 @@ function withBestAvailableLabel(detection: NativeDetectedObject): NativeDetected
 
 function normalizeLabel(label: string): string {
   return label.trim().toLowerCase();
+}
+
+function isActionableLabel(label: string): boolean {
+  const normalized = normalizeLabel(label);
+
+  return !GENERIC_LABELS.has(normalized) && !SCENE_ONLY_LABELS.has(normalized);
 }
 
 function readableLabel(label: string): string {

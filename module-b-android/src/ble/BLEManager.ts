@@ -38,6 +38,43 @@ function normalizeUuid(uuid: string): string {
   return uuid.toLowerCase();
 }
 
+function getDeviceNames(device: Device): string[] {
+  return [device.localName, device.name].flatMap((value) => {
+    if (!value) {
+      return [];
+    }
+
+    const normalized = value.trim();
+    return normalized ? [normalized] : [];
+  });
+}
+
+function matchesDeviceName(deviceNames: string[], expectedNames: string[]): boolean {
+  return deviceNames.some((deviceName) =>
+    expectedNames.some((expectedName) => deviceName.toLowerCase().includes(expectedName.toLowerCase())),
+  );
+}
+
+function matchesVest(device: Device): boolean {
+  const advertisedServices = device.serviceUUIDs?.map(normalizeUuid) ?? [];
+  const deviceNames = getDeviceNames(device);
+
+  return (
+    advertisedServices.includes(normalizeUuid(VEST_SERVICE_UUID)) ||
+    matchesDeviceName(deviceNames, [AURA_DEVICE_NAMES.vest])
+  );
+}
+
+function matchesWatch(device: Device): boolean {
+  const advertisedServices = device.serviceUUIDs?.map(normalizeUuid) ?? [];
+  const deviceNames = getDeviceNames(device);
+
+  return (
+    advertisedServices.includes(normalizeUuid(WATCH_SERVICE_UUID)) ||
+    matchesDeviceName(deviceNames, [AURA_DEVICE_NAMES.watch, 'Pixel Watch'])
+  );
+}
+
 export class AuraBleManager {
   private readonly manager = new BleManager();
   private readonly subscriptions: Subscription[] = [];
@@ -45,6 +82,14 @@ export class AuraBleManager {
   private readonly reconnectAttempts: Record<DeviceRole, number> = {
     vest: 0,
     watch: 0,
+  };
+  private readonly isConnecting: Record<DeviceRole, boolean> = {
+    vest: false,
+    watch: false,
+  };
+  private readonly suppressNextDisconnectError: Record<DeviceRole, boolean> = {
+    vest: false,
+    watch: false,
   };
 
   private vestDevice: Device | null = null;
@@ -55,7 +100,7 @@ export class AuraBleManager {
   start() {
     const stateSubscription = this.manager.onStateChange((state) => {
       if (state === State.PoweredOn) {
-        this.scanForDevices();
+        this.scanForWatch();
       } else {
         this.callbacks.onError('Bluetooth is not powered on.');
       }
@@ -73,7 +118,7 @@ export class AuraBleManager {
         return;
       }
 
-      this.scanForDevices();
+      this.scanForVest();
     } catch (error) {
       this.callbacks.onError(getBleErrorMessage(error));
     }
@@ -126,22 +171,11 @@ export class AuraBleManager {
         return;
       }
 
-      const advertisedServices = device.serviceUUIDs?.map(normalizeUuid) ?? [];
-      const deviceName = device.localName ?? device.name ?? '';
-
-      if (
-        !this.vestDevice &&
-        (advertisedServices.includes(normalizeUuid(VEST_SERVICE_UUID)) ||
-          deviceName.includes(AURA_DEVICE_NAMES.vest))
-      ) {
+      if (!this.vestDevice && matchesVest(device)) {
         void this.connectVest(device);
       }
 
-      if (
-        !this.watchDevice &&
-        (advertisedServices.includes(normalizeUuid(WATCH_SERVICE_UUID)) ||
-          deviceName.includes(AURA_DEVICE_NAMES.watch))
-      ) {
+      if (!this.watchDevice && matchesWatch(device)) {
         void this.connectWatch(device);
       }
 
@@ -151,7 +185,55 @@ export class AuraBleManager {
     });
   }
 
+  private scanForVest() {
+    this.scanForRole('vest', [VEST_SERVICE_UUID], (device) => {
+      void this.connectVest(device);
+    });
+  }
+
+  private scanForWatch() {
+    this.scanForRole('watch', [WATCH_SERVICE_UUID], (device) => {
+      void this.connectWatch(device);
+    });
+  }
+
+  private scanForRole(
+    role: DeviceRole,
+    serviceUuids: string[],
+    connect: (device: Device) => void,
+  ) {
+    if (this.isConnecting[role]) {
+      return;
+    }
+
+    if (role === 'vest' ? this.vestDevice : this.watchDevice) {
+      return;
+    }
+
+    this.manager.stopDeviceScan();
+
+    this.manager.startDeviceScan(serviceUuids, null, (error, device) => {
+      if (error) {
+        this.callbacks.onError(error.message);
+        return;
+      }
+
+      if (!device) {
+        return;
+      }
+
+      this.manager.stopDeviceScan();
+      connect(device);
+    });
+  }
+
   private async connectVest(device: Device) {
+    if (this.isConnecting.vest) {
+      return;
+    }
+
+    this.isConnecting.vest = true;
+
     try {
       const connected = await device.connect({ timeout: 10000 });
       await connected.discoverAllServicesAndCharacteristics();
@@ -160,13 +242,25 @@ export class AuraBleManager {
       this.callbacks.onVestConnectionChange(true);
       this.attachVestMonitors(connected);
       this.attachDisconnectionMonitor(connected, 'vest');
+
+      if (!this.watchDevice) {
+        this.scanForWatch();
+      }
     } catch (error) {
       this.callbacks.onError(getBleErrorMessage(error));
       this.scheduleReconnect('vest');
+    } finally {
+      this.isConnecting.vest = false;
     }
   }
 
   private async connectWatch(device: Device) {
+    if (this.isConnecting.watch) {
+      return;
+    }
+
+    this.isConnecting.watch = true;
+
     try {
       const connected = await device.connect({ timeout: 10000 });
       await connected.discoverAllServicesAndCharacteristics();
@@ -175,9 +269,15 @@ export class AuraBleManager {
       this.callbacks.onWatchConnectionChange(true);
       this.attachWatchMonitors(connected);
       this.attachDisconnectionMonitor(connected, 'watch');
+
+      if (!this.vestDevice) {
+        this.scanForVest();
+      }
     } catch (error) {
       this.callbacks.onError(getBleErrorMessage(error));
       this.scheduleReconnect('watch');
+    } finally {
+      this.isConnecting.watch = false;
     }
   }
 
@@ -207,7 +307,12 @@ export class AuraBleManager {
       WATCH_TRIGGER_CHARACTERISTIC_UUID,
       (error, characteristic) => {
         if (error) {
-          this.callbacks.onError(error.message);
+          if (isNotifyChangeFailure(error)) {
+            this.handleWatchMonitorFailure(device);
+            return;
+          }
+
+          this.callbacks.onError(getBleErrorMessage(error));
           return;
         }
 
@@ -226,11 +331,20 @@ export class AuraBleManager {
     this.subscriptions.push(triggerSubscription);
   }
 
+  private handleWatchMonitorFailure(device: Device) {
+    this.watchDevice = null;
+    this.callbacks.onWatchConnectionChange(false);
+    this.scheduleReconnect('watch');
+    this.suppressNextDisconnectError.watch = true;
+    void device.cancelConnection().catch(() => undefined);
+  }
+
   private attachDisconnectionMonitor(device: Device, role: DeviceRole) {
     const subscription = device.onDisconnected((error) => {
-      if (error) {
+      if (error && !this.suppressNextDisconnectError[role]) {
         this.callbacks.onError(error.message);
       }
+      this.suppressNextDisconnectError[role] = false;
 
       if (role === 'vest') {
         this.vestDevice = null;
@@ -287,7 +401,11 @@ export class AuraBleManager {
 
     this.reconnectAttempts[role] += 1;
     this.reconnectTimers[role] = setTimeout(() => {
-      this.scanForDevices();
+      if (role === 'vest') {
+        this.scanForVest();
+      } else {
+        this.scanForWatch();
+      }
     }, delay);
   }
 }
@@ -298,4 +416,10 @@ function getBleErrorMessage(error: unknown): string {
   }
 
   return 'Unknown Bluetooth error.';
+}
+
+function isNotifyChangeFailure(error: unknown): boolean {
+  const message = getBleErrorMessage(error).toLowerCase();
+
+  return message.includes('notify change failed');
 }

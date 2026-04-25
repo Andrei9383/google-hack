@@ -39,4 +39,76 @@ describe('ObjectFilter', () => {
 
     expect(detections).toHaveLength(0);
   });
+
+  it('drops scene-only labels instead of speaking them as objects', () => {
+    const detections = filterDetections(
+      [
+        {
+          label: 'Sky',
+          confidence: 0.92,
+          boundingBox: { x: 0, y: 0, width: 120, height: 120 },
+        },
+      ],
+      120,
+      120,
+    );
+
+    expect(detections).toHaveLength(0);
+  });
+
+  it('uses actionable alternatives before scene-only labels', () => {
+    const [detection] = filterDetections(
+      [
+        {
+          label: 'Sky',
+          confidence: 0.92,
+          alternativeLabels: [
+            { text: 'Sky', confidence: 0.92 },
+            { text: 'Chair', confidence: 0.62 },
+          ],
+          boundingBox: { x: 20, y: 20, width: 40, height: 40 },
+        },
+      ],
+      120,
+      120,
+    );
+
+    expect(detection?.label).toBe('chair');
+  });
+
+  it('drops activity labels instead of treating them like objects', () => {
+    const detections = filterDetections(
+      [
+        {
+          label: 'Sitting',
+          confidence: 0.92,
+          boundingBox: { x: 0, y: 0, width: 120, height: 120 },
+        },
+      ],
+      120,
+      120,
+    );
+
+    expect(detections).toHaveLength(0);
+  });
+
+  it('prefers concrete alternatives over activity labels', () => {
+    const [detection] = filterDetections(
+      [
+        {
+          label: 'Sitting',
+          confidence: 0.92,
+          alternativeLabels: [
+            { text: 'Sitting', confidence: 0.92 },
+            { text: 'Chair', confidence: 0.82 },
+          ],
+          boundingBox: { x: 20, y: 20, width: 40, height: 40 },
+        },
+      ],
+      120,
+      120,
+    );
+
+    expect(detection?.label).toBe('chair');
+  });
 });
