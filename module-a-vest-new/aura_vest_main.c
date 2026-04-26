@@ -68,17 +68,26 @@
 #ifndef CONFIG_EXAMPLES_AURA_VEST_ECHO_LEFT_DEV
 #  define CONFIG_EXAMPLES_AURA_VEST_ECHO_LEFT_DEV "/dev/gpio3"
 #endif
+#ifndef CONFIG_EXAMPLES_AURA_VEST_DIST_LEFT_DEV
+#  define CONFIG_EXAMPLES_AURA_VEST_DIST_LEFT_DEV "/dev/dist0"
+#endif
 #ifndef CONFIG_EXAMPLES_AURA_VEST_TRIG_CENTER_DEV
 #  define CONFIG_EXAMPLES_AURA_VEST_TRIG_CENTER_DEV "/dev/gpio1"
 #endif
 #ifndef CONFIG_EXAMPLES_AURA_VEST_ECHO_CENTER_DEV
 #  define CONFIG_EXAMPLES_AURA_VEST_ECHO_CENTER_DEV "/dev/gpio4"
 #endif
+#ifndef CONFIG_EXAMPLES_AURA_VEST_DIST_CENTER_DEV
+#  define CONFIG_EXAMPLES_AURA_VEST_DIST_CENTER_DEV "/dev/dist1"
+#endif
 #ifndef CONFIG_EXAMPLES_AURA_VEST_TRIG_RIGHT_DEV
 #  define CONFIG_EXAMPLES_AURA_VEST_TRIG_RIGHT_DEV "/dev/gpio2"
 #endif
 #ifndef CONFIG_EXAMPLES_AURA_VEST_ECHO_RIGHT_DEV
 #  define CONFIG_EXAMPLES_AURA_VEST_ECHO_RIGHT_DEV "/dev/gpio5"
+#endif
+#ifndef CONFIG_EXAMPLES_AURA_VEST_DIST_RIGHT_DEV
+#  define CONFIG_EXAMPLES_AURA_VEST_DIST_RIGHT_DEV "/dev/dist2"
 #endif
 #ifndef CONFIG_EXAMPLES_AURA_VEST_MOTOR_LEFT_DEV
 #  define CONFIG_EXAMPLES_AURA_VEST_MOTOR_LEFT_DEV "/dev/pwm0"
@@ -131,6 +140,7 @@ struct aura_zone_config_s
   const char *name;
   const char *trig_dev;
   const char *echo_dev;
+  const char *dist_dev;
 };
 
 struct aura_motor_config_s
@@ -143,6 +153,7 @@ struct aura_zone_hw_s
 {
   int trig_fd;
   int echo_fd;
+  int dist_fd;
 };
 
 struct aura_motor_hw_s
@@ -179,17 +190,20 @@ static const struct aura_zone_config_s g_zone_config[AURA_SENSOR_COUNT] =
   {
     "left",
     CONFIG_EXAMPLES_AURA_VEST_TRIG_LEFT_DEV,
-    CONFIG_EXAMPLES_AURA_VEST_ECHO_LEFT_DEV
+    CONFIG_EXAMPLES_AURA_VEST_ECHO_LEFT_DEV,
+    CONFIG_EXAMPLES_AURA_VEST_DIST_LEFT_DEV
   },
   {
     "center",
     CONFIG_EXAMPLES_AURA_VEST_TRIG_CENTER_DEV,
-    CONFIG_EXAMPLES_AURA_VEST_ECHO_CENTER_DEV
+    CONFIG_EXAMPLES_AURA_VEST_ECHO_CENTER_DEV,
+    CONFIG_EXAMPLES_AURA_VEST_DIST_CENTER_DEV
   },
   {
     "right",
     CONFIG_EXAMPLES_AURA_VEST_TRIG_RIGHT_DEV,
-    CONFIG_EXAMPLES_AURA_VEST_ECHO_RIGHT_DEV
+    CONFIG_EXAMPLES_AURA_VEST_ECHO_RIGHT_DEV,
+    CONFIG_EXAMPLES_AURA_VEST_DIST_RIGHT_DEV
   }
 };
 
@@ -234,6 +248,65 @@ static void aura_sleep_us(uint64_t delay_us)
   ts.tv_nsec = (long)((delay_us % 1000000ULL) * 1000ULL);
   nanosleep(&ts, NULL);
 }
+
+/* clock_gettime() / nanosleep() resolution on this NuttX build is one
+ * scheduler tick (typically 10 ms).  That is far too coarse for the
+ * HC-SR04: a nanosleep(10us) for the trigger pulse stretches to a full
+ * tick, and the echo pulse for anything closer than ~86 cm has already
+ * finished before the firmware starts polling.  Use the Xtensa CCOUNT
+ * cycle counter for microsecond-accurate timing in the sensor path.
+ */
+#if !defined(AURA_HOST_SIM) && (defined(__xtensa__) || defined(__XTENSA__))
+#  ifdef CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ
+#    define AURA_HIRES_MHZ CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ
+#  else
+#    define AURA_HIRES_MHZ 240
+#  endif
+
+static inline uint32_t aura_hires_count(void)
+{
+  uint32_t count;
+
+  __asm__ __volatile__("rsr %0, ccount" : "=r"(count));
+  return count;
+}
+
+static inline uint32_t aura_hires_us_since(uint32_t start_count)
+{
+  /* Unsigned subtraction wraps cleanly across the 32-bit CCOUNT
+   * rollover (~17.9 s @ 240 MHz), which is far longer than any
+   * interval we measure here.
+   */
+
+  return (aura_hires_count() - start_count) / AURA_HIRES_MHZ;
+}
+
+static void aura_busy_wait_us(uint32_t delay_us)
+{
+  const uint32_t start = aura_hires_count();
+  const uint32_t cycles = delay_us * AURA_HIRES_MHZ;
+
+  while ((aura_hires_count() - start) < cycles)
+    {
+      /* spin */
+    }
+}
+#else
+static inline uint32_t aura_hires_count(void)
+{
+  return (uint32_t)aura_time_us();
+}
+
+static inline uint32_t aura_hires_us_since(uint32_t start_count)
+{
+  return (uint32_t)aura_time_us() - start_count;
+}
+
+static void aura_busy_wait_us(uint32_t delay_us)
+{
+  aura_sleep_us(delay_us);
+}
+#endif
 
 static bool aura_has_dev(const char *path)
 {
@@ -437,47 +510,56 @@ static struct aura_haptic_command_s aura_distance_to_haptic(uint16_t distance_cm
 
 static uint16_t aura_read_hcsr04_cm(struct aura_zone_hw_s *hw)
 {
-  bool level;
-  uint64_t deadline;
-  uint64_t pulse_start;
-  uint64_t pulse_end;
-  uint64_t pulse_width;
+  bool level = false;
+  uint32_t poll_start;
+  uint32_t pulse_start = 0;
+  uint32_t pulse_width_us;
+  bool got_edge;
   int ret;
+
+  if (hw->dist_fd >= 0)
+    {
+      char buffer[16];
+      char *endptr;
+      unsigned long raw_us;
+      ssize_t nread;
+
+      nread = read(hw->dist_fd, buffer, sizeof(buffer) - 1);
+      if (nread <= 0)
+        {
+          return AURA_DISTANCE_MAX_CM;
+        }
+
+      buffer[nread] = '\0';
+      errno = 0;
+      raw_us = strtoul(buffer, &endptr, 10);
+      if (errno != 0 || endptr == buffer || raw_us == 0 ||
+          raw_us > AURA_ECHO_TIMEOUT_US)
+        {
+          return AURA_DISTANCE_MAX_CM;
+        }
+
+      pulse_width_us = raw_us / 58UL;
+      if (pulse_width_us < 2UL)
+        {
+          return 2;
+        }
+      if (pulse_width_us > AURA_DISTANCE_MAX_CM)
+        {
+          return AURA_DISTANCE_MAX_CM;
+        }
+
+      return (uint16_t)pulse_width_us;
+    }
 
   if (hw->trig_fd < 0 || hw->echo_fd < 0)
     {
       return AURA_DISTANCE_MAX_CM;
     }
 
-  aura_gpio_write(hw->trig_fd, false);
-  aura_sleep_us(2);
-  aura_gpio_write(hw->trig_fd, true);
-  aura_sleep_us(AURA_TRIGGER_PULSE_US);
-  aura_gpio_write(hw->trig_fd, false);
+  /* Drain any lingering echo from a previous cycle. */
 
-  deadline = aura_time_us() + AURA_ECHO_TIMEOUT_US;
-  do
-    {
-      ret = aura_gpio_read(hw->echo_fd, &level);
-      if (ret < 0)
-        {
-          return AURA_DISTANCE_MAX_CM;
-        }
-      if (level)
-        {
-          break;
-        }
-    }
-  while (aura_time_us() < deadline);
-
-  if (!level)
-    {
-      return AURA_DISTANCE_MAX_CM;
-    }
-
-  pulse_start = aura_time_us();
-  deadline = pulse_start + AURA_ECHO_TIMEOUT_US;
-
+  poll_start = aura_hires_count();
   do
     {
       ret = aura_gpio_read(hw->echo_fd, &level);
@@ -490,27 +572,82 @@ static uint16_t aura_read_hcsr04_cm(struct aura_zone_hw_s *hw)
           break;
         }
     }
-  while (aura_time_us() < deadline);
+  while (aura_hires_us_since(poll_start) < AURA_ECHO_TIMEOUT_US);
 
-  pulse_end = aura_time_us();
-  pulse_width = pulse_end > pulse_start ? pulse_end - pulse_start : 0;
+  /* Send a clean ~10 us trigger pulse using the cycle counter so the
+   * pulse width is not stretched to a scheduler tick.
+   */
 
-  if (pulse_width == 0 || pulse_width > AURA_ECHO_TIMEOUT_US)
+  aura_gpio_write(hw->trig_fd, false);
+  aura_busy_wait_us(2);
+  aura_gpio_write(hw->trig_fd, true);
+  aura_busy_wait_us(AURA_TRIGGER_PULSE_US);
+  aura_gpio_write(hw->trig_fd, false);
+
+  /* Wait for the echo line to go HIGH. */
+
+  poll_start = aura_hires_count();
+  got_edge = false;
+  while (aura_hires_us_since(poll_start) < AURA_ECHO_TIMEOUT_US)
+    {
+      ret = aura_gpio_read(hw->echo_fd, &level);
+      if (ret < 0)
+        {
+          return AURA_DISTANCE_MAX_CM;
+        }
+      if (level)
+        {
+          pulse_start = aura_hires_count();
+          got_edge = true;
+          break;
+        }
+    }
+
+  if (!got_edge)
     {
       return AURA_DISTANCE_MAX_CM;
     }
 
-  pulse_width = pulse_width / 58ULL;
-  if (pulse_width < 2ULL)
+  /* Wait for the echo line to go LOW. */
+
+  got_edge = false;
+  while (aura_hires_us_since(pulse_start) < AURA_ECHO_TIMEOUT_US)
+    {
+      ret = aura_gpio_read(hw->echo_fd, &level);
+      if (ret < 0)
+        {
+          return AURA_DISTANCE_MAX_CM;
+        }
+      if (!level)
+        {
+          got_edge = true;
+          break;
+        }
+    }
+
+  if (!got_edge)
+    {
+      return AURA_DISTANCE_MAX_CM;
+    }
+
+  pulse_width_us = aura_hires_us_since(pulse_start);
+
+  if (pulse_width_us == 0 || pulse_width_us > AURA_ECHO_TIMEOUT_US)
+    {
+      return AURA_DISTANCE_MAX_CM;
+    }
+
+  pulse_width_us /= 58U;
+  if (pulse_width_us < 2U)
     {
       return 2;
     }
-  if (pulse_width > AURA_DISTANCE_MAX_CM)
+  if (pulse_width_us > AURA_DISTANCE_MAX_CM)
     {
       return AURA_DISTANCE_MAX_CM;
     }
 
-  return (uint16_t)pulse_width;
+  return (uint16_t)pulse_width_us;
 }
 
 static void aura_encode_sensor_payload(const uint16_t distance_cm[AURA_SENSOR_COUNT],
@@ -688,17 +825,19 @@ static int aura_init_hardware(struct aura_app_s *app)
       const struct aura_zone_config_s *cfg = &g_zone_config[zone];
       struct aura_zone_hw_s *sensor = &app->sensors[zone];
 
+      sensor->dist_fd = aura_open_optional(cfg->dist_dev, O_RDONLY);
       sensor->trig_fd = aura_open_optional(cfg->trig_dev, O_RDWR);
       sensor->echo_fd = aura_open_optional(cfg->echo_dev, O_RDONLY);
       aura_gpio_write(sensor->trig_fd, false);
 
-      if (sensor->trig_fd < 0 || sensor->echo_fd < 0)
+      if (sensor->dist_fd < 0 &&
+          (sensor->trig_fd < 0 || sensor->echo_fd < 0))
         {
           faults++;
         }
 
-      printf("aura_vest: sensor %s trig=%s echo=%s\n",
-             cfg->name, cfg->trig_dev, cfg->echo_dev);
+      printf("aura_vest: sensor %s dist=%s trig=%s echo=%s\n",
+             cfg->name, cfg->dist_dev, cfg->trig_dev, cfg->echo_dev);
     }
 
   for (motor = 0; motor < AURA_MOTOR_COUNT; motor++)
@@ -741,15 +880,64 @@ static void aura_poll_sensors(struct aura_app_s *app)
     }
 }
 
+static int aura_run_gpio_diag(struct aura_app_s *app)
+{
+  int zone;
+  int sample;
+
+  printf("aura_vest: gpio diag mode\n");
+  printf("aura_vest: measure each trigger pin to GND while it is held high\n");
+
+  for (zone = 0; zone < AURA_SENSOR_COUNT; zone++)
+    {
+      int clear_zone;
+      const struct aura_zone_config_s *cfg = &g_zone_config[zone];
+
+      for (clear_zone = 0; clear_zone < AURA_SENSOR_COUNT; clear_zone++)
+        {
+          aura_gpio_write(app->sensors[clear_zone].trig_fd, false);
+        }
+
+      printf("aura_vest: diag trigger %s HIGH on %s for 2s\n",
+             cfg->name, cfg->trig_dev);
+      aura_gpio_write(app->sensors[zone].trig_fd, true);
+      aura_sleep_us(2000000ULL);
+      aura_gpio_write(app->sensors[zone].trig_fd, false);
+
+      printf("aura_vest: diag trigger %s LOW for 1s\n", cfg->name);
+      aura_sleep_us(1000000ULL);
+    }
+
+  printf("aura_vest: echo input diag for 10s\n");
+  printf("aura_vest: jumper each echo GPIO to 3V3 then GND and watch 1/0\n");
+
+  for (sample = 0; sample < 100; sample++)
+    {
+      bool echo[AURA_SENSOR_COUNT] = { false, false, false };
+
+      for (zone = 0; zone < AURA_SENSOR_COUNT; zone++)
+        {
+          aura_gpio_read(app->sensors[zone].echo_fd, &echo[zone]);
+        }
+
+      printf("aura_vest: diag echo L=%u C=%u R=%u\n",
+             echo[AURA_LEFT] ? 1 : 0,
+             echo[AURA_CENTER] ? 1 : 0,
+             echo[AURA_RIGHT] ? 1 : 0);
+
+      aura_sleep_us(100000ULL);
+    }
+
+  printf("aura_vest: gpio diag done\n");
+  return 0;
+}
+
 int main(int argc, FAR char *argv[])
 {
   struct aura_app_s app;
   struct aura_transport_config_s transport_config;
   uint8_t sensor_payload[3];
   uint8_t override_payload[3];
-
-  (void)argc;
-  (void)argv;
 
   memset(&app, 0, sizeof(app));
   app.boot_ms = aura_time_ms();
@@ -767,6 +955,11 @@ int main(int argc, FAR char *argv[])
   if (aura_init_hardware(&app) < 0)
     {
       app.status = AURA_STATUS_SENSOR_FAULT;
+    }
+
+  if (argc > 1 && strcmp(argv[1], "diag") == 0)
+    {
+      return aura_run_gpio_diag(&app);
     }
 
   aura_platform_transport_init(&transport_config);
