@@ -9,7 +9,7 @@ import { CameraProcessor } from './src/vision/CameraProcessor';
 
 function AuraShell({ cameraGranted }: { cameraGranted: boolean }) {
   const system = useSystemStore();
-  const { describeSceneNow, handleVisionDetections, handleVisionError } = useAuraSystem(
+  const { describeSceneNow, handleVisionDetections, handleVisionError, sendVestTest } = useAuraSystem(
     cameraGranted,
   );
 
@@ -18,6 +18,7 @@ function AuraShell({ cameraGranted }: { cameraGranted: boolean }) {
       <View style={styles.container}>
         {cameraGranted ? (
           <CameraProcessor
+            detections={system.detections}
             enabled={cameraGranted}
             onDetections={handleVisionDetections}
             onError={handleVisionError}
@@ -32,10 +33,12 @@ function AuraShell({ cameraGranted }: { cameraGranted: boolean }) {
           phoneBatteryLevel={system.phoneBatteryLevel}
           vestBaseUrl={system.vestBaseUrl}
           sensorData={system.vestSensorData}
+          lastOverrides={system.lastOverrides}
           lastScene={system.lastScene}
           lastError={system.lastError}
           onApplyVestBaseUrl={system.setVestBaseUrl}
           onDescribeNow={describeSceneNow}
+          onSendVestTest={sendVestTest}
         />
         <StatusBar style="light" />
       </View>

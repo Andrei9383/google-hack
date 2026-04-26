@@ -35,7 +35,7 @@
 #define AURA_ECHO_TIMEOUT_US 38000
 #define AURA_OVERRIDE_MS 2000
 #define AURA_PWM_FREQUENCY_HZ 200
-#define AURA_MIN_EFFECTIVE_DUTY 96
+#define AURA_MIN_EFFECTIVE_DUTY 70
 
 #define AURA_DISTANCE_MAX_CM 400
 #define AURA_DISTANCE_CLEAR_CM 200
@@ -290,28 +290,41 @@ static int aura_gpio_read(int fd, bool *value)
 
 static uint8_t aura_scale_motor_duty(uint8_t duty)
 {
-  uint16_t scaled;
   uint16_t limited = duty;
+  uint16_t max_duty = CONFIG_EXAMPLES_AURA_VEST_MAX_MOTOR_DUTY;
 
   if (duty == 0)
     {
       return 0;
     }
 
-  if (limited > CONFIG_EXAMPLES_AURA_VEST_MAX_MOTOR_DUTY)
+  if (max_duty > 255U)
     {
-      limited = CONFIG_EXAMPLES_AURA_VEST_MAX_MOTOR_DUTY;
+      max_duty = 255U;
     }
 
-  scaled = AURA_MIN_EFFECTIVE_DUTY +
-           ((limited * (255U - AURA_MIN_EFFECTIVE_DUTY)) / 255U);
+  if (limited > max_duty)
+    {
+      limited = max_duty;
+    }
 
-  return scaled > 255U ? 255U : (uint8_t)scaled;
+  if (limited < AURA_MIN_EFFECTIVE_DUTY &&
+      max_duty >= AURA_MIN_EFFECTIVE_DUTY)
+    {
+      limited = AURA_MIN_EFFECTIVE_DUTY;
+    }
+
+  return (uint8_t)limited;
 }
 
 static int aura_pwm_write(int fd, uint8_t duty)
 {
   const uint8_t effective = aura_scale_motor_duty(duty);
+#ifndef AURA_HOST_SIM
+  struct pwm_info_s info;
+  const ub16_t duty_b16 =
+    (ub16_t)(((uint32_t)effective * 65535U) / 255U);
+#endif
 
   if (fd < 0)
     {
@@ -322,34 +335,23 @@ static int aura_pwm_write(int fd, uint8_t duty)
   printf("aura_vest: pwm fd=%d duty=%u effective=%u\n", fd, duty, effective);
   return 0;
 #else
-  if (effective == 0)
-    {
-      return ioctl(fd, PWMIOC_STOP, 0);
-    }
-  else
-    {
-      struct pwm_info_s info;
-      const ub16_t duty_b16 =
-        (ub16_t)(((uint32_t)effective * 65535U) / 255U);
-
-      memset(&info, 0, sizeof(info));
-      info.frequency = AURA_PWM_FREQUENCY_HZ;
+  memset(&info, 0, sizeof(info));
+  info.frequency = AURA_PWM_FREQUENCY_HZ;
 #ifdef CONFIG_PWM_MULTICHAN
-      info.channels[0].duty = duty_b16;
-      info.channels[0].cpol = PWM_CPOL_LOW;
-      info.channels[0].channel = 1;
+  info.channels[0].duty = duty_b16;
+  info.channels[0].cpol = PWM_CPOL_LOW;
+  info.channels[0].channel = 1;
 #else
-      info.duty = duty_b16;
-      info.cpol = PWM_CPOL_LOW;
+  info.duty = duty_b16;
+  info.cpol = PWM_CPOL_LOW;
 #endif
 
-      if (ioctl(fd, PWMIOC_SETCHARACTERISTICS, (unsigned long)((uintptr_t)&info)) < 0)
-        {
-          return -errno;
-        }
-
-      return ioctl(fd, PWMIOC_START, 0);
+  if (ioctl(fd, PWMIOC_SETCHARACTERISTICS, (unsigned long)((uintptr_t)&info)) < 0)
+    {
+      return -errno;
     }
+
+  return ioctl(fd, PWMIOC_START, 0);
 #endif
 }
 
@@ -406,27 +408,27 @@ static struct aura_haptic_command_s aura_distance_to_haptic(uint16_t distance_cm
     }
   else if (distance_cm > AURA_DISTANCE_APPROACHING_CM)
     {
-      command.intensity = 38; /* 15% of 255 */
+      command.intensity = 70; /* ~27% of 255 */
       command.pattern = AURA_PATTERN_PULSE_1HZ;
     }
   else if (distance_cm > AURA_DISTANCE_NEAR_CM)
     {
-      command.intensity = 89; /* 35% */
+      command.intensity = 89; /* ~35% */
       command.pattern = AURA_PATTERN_PULSE_2HZ;
     }
   else if (distance_cm > AURA_DISTANCE_VERY_NEAR_CM)
     {
-      command.intensity = 166; /* 65% */
+      command.intensity = 112; /* ~44% */
       command.pattern = AURA_PATTERN_PULSE_4HZ;
     }
   else if (distance_cm >= AURA_DISTANCE_DANGER_CM)
     {
-      command.intensity = 230; /* 90% */
+      command.intensity = 115; /* ~45% */
       command.pattern = AURA_PATTERN_PULSE_8HZ;
     }
   else
     {
-      command.intensity = 255;
+      command.intensity = 128; /* ~50% hard limit for 6 V motor rail */
       command.pattern = AURA_PATTERN_CONTINUOUS;
     }
 

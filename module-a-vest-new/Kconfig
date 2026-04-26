@@ -50,12 +50,13 @@ config EXAMPLES_AURA_VEST_MOTOR_RIGHT_DEV
 
 config EXAMPLES_AURA_VEST_MAX_MOTOR_DUTY
        int "Maximum motor PWM duty"
-       default 255
+       default 128
        range 0 255
        ---help---
-               Limits the strongest motor command before it is sent to PWM.
-               Set this lower when the L293D motor supply is higher than the
-               small vibration motor's rated voltage.
+               Limits the strongest effective PWM duty before it is sent to
+               the motor driver. The default 128 is about 50% duty, useful
+               when small 3 V vibration motors are powered from a 6 V motor
+               rail through the L293D.
 
 config EXAMPLES_AURA_VEST_HTTP_BIND_ADDRESS
        string "HTTP server bind address"

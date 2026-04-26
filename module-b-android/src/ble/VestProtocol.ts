@@ -2,6 +2,7 @@ import { Buffer } from 'buffer';
 
 export type AuraZone = 'left' | 'center' | 'right';
 export type HapticTier = 'DANGER' | 'DYNAMIC' | 'STATIC';
+export type HapticIntent = HapticTier | 'CLEAR';
 export type VestStatusCode = 0x00 | 0x01 | 0x02 | 0x03;
 
 export interface VestSensorData {
@@ -13,7 +14,9 @@ export interface VestSensorData {
 
 export interface HapticCommand {
   zone: AuraZone;
-  tier: HapticTier;
+  tier: HapticIntent;
+  intensity: number;
+  pattern: number;
 }
 
 export const ZONE_TO_MOTOR_ID: Record<AuraZone, number> = {
@@ -30,11 +33,18 @@ export const VEST_STATUS_LABELS: Record<VestStatusCode, string> = {
 };
 
 export function buildHapticOverride(zone: AuraZone, tier: HapticTier): Uint8Array {
-  const motorId = ZONE_TO_MOTOR_ID[zone];
   const intensity = { DANGER: 0xff, DYNAMIC: 0xb0, STATIC: 0x70 }[tier];
   const pattern = { DANGER: 0x02, DYNAMIC: 0x01, STATIC: 0x00 }[tier];
 
-  return new Uint8Array([motorId, intensity, pattern]);
+  return buildHapticPayload(zone, intensity, pattern);
+}
+
+export function buildHapticPayload(zone: AuraZone, intensity: number, pattern: number): Uint8Array {
+  const motorId = ZONE_TO_MOTOR_ID[zone];
+  const normalizedIntensity = Math.max(0, Math.min(255, Math.round(intensity)));
+  const normalizedPattern = Math.max(0, Math.min(2, Math.round(pattern)));
+
+  return new Uint8Array([motorId, normalizedIntensity, normalizedPattern]);
 }
 
 export function parseSensorPayload(payload: Uint8Array, timestamp = Date.now()): VestSensorData {

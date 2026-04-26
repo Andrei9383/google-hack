@@ -37,8 +37,12 @@ class AuraNativeModule : Module() {
       val parsedUri = Uri.parse(uri)
       val image = InputImage.fromFilePath(context, parsedUri)
       val results = Tasks.await(detector.process(image))
+      val relevantResults = results
+        .filter { isNavigationSizedBox(it.boundingBox, image.width, image.height) }
+        .sortedByDescending { boxAreaRatio(it.boundingBox, image.width, image.height) }
+        .take(6)
 
-      if (results.isEmpty()) {
+      if (relevantResults.isEmpty()) {
         val imageLabels = runImageLabeling(image)
 
         imageLabels
@@ -55,7 +59,7 @@ class AuraNativeModule : Module() {
       } else {
         val sourceBitmap = loadBitmap(context, parsedUri)
 
-        results.map { detectedObject ->
+        relevantResults.map { detectedObject ->
           val objectLabels = detectedObject.labels
             .sortedByDescending { it.confidence }
             .map {
@@ -64,7 +68,10 @@ class AuraNativeModule : Module() {
                 "confidence" to it.confidence.toDouble()
               )
             }
-          val cropLabels = if (hasActionableLabel(objectLabels)) {
+          val cropLabels = if (
+            hasActionableLabel(objectLabels) ||
+            !shouldRunCropLabeling(detectedObject.boundingBox, image.width, image.height)
+          ) {
             emptyList()
           } else {
             runObjectLabeling(sourceBitmap, detectedObject.boundingBox)
@@ -174,6 +181,34 @@ class AuraNativeModule : Module() {
     return Bitmap.createBitmap(sourceBitmap, left, top, width, height)
   }
 
+  private fun shouldRunCropLabeling(box: Rect, frameWidth: Int, frameHeight: Int): Boolean {
+    val areaRatio = boxAreaRatio(box, frameWidth, frameHeight)
+    val bottomRatio = box.bottom.toDouble() / frameHeight.coerceAtLeast(1).toDouble()
+
+    return areaRatio >= 0.055 || (bottomRatio >= 0.58 && areaRatio >= 0.025)
+  }
+
+  private fun isNavigationSizedBox(box: Rect, frameWidth: Int, frameHeight: Int): Boolean {
+    val safeWidth = frameWidth.coerceAtLeast(1).toDouble()
+    val safeHeight = frameHeight.coerceAtLeast(1).toDouble()
+    val widthRatio = box.width().coerceAtLeast(0).toDouble() / safeWidth
+    val heightRatio = box.height().coerceAtLeast(0).toDouble() / safeHeight
+    val areaRatio = widthRatio * heightRatio
+    val bottomRatio = box.bottom.toDouble() / safeHeight
+
+    return areaRatio >= 0.035 ||
+      (heightRatio >= 0.24 && widthRatio >= 0.07) ||
+      (bottomRatio >= 0.58 && areaRatio >= 0.02)
+  }
+
+  private fun boxAreaRatio(box: Rect, frameWidth: Int, frameHeight: Int): Double {
+    val safeWidth = frameWidth.coerceAtLeast(1).toDouble()
+    val safeHeight = frameHeight.coerceAtLeast(1).toDouble()
+
+    return (box.width().coerceAtLeast(0).toDouble() / safeWidth) *
+      (box.height().coerceAtLeast(0).toDouble() / safeHeight)
+  }
+
   private fun mergeLabels(
     objectLabels: List<Map<String, Any>>,
     imageLabels: List<Map<String, Any>>,
@@ -201,7 +236,7 @@ class AuraNativeModule : Module() {
   }
 
   private fun isGenericLabel(label: String?): Boolean {
-    return setOf("fashion good", "home good", "object", "unknown").contains(normalizeLabel(label))
+    return setOf("fashion good", "home good", "object", "selfie", "unknown").contains(normalizeLabel(label))
   }
 
   private fun isSceneOnlyLabel(label: String?): Boolean {

@@ -30,7 +30,7 @@ describe('ObjectFilter', () => {
         {
           label: 'Fashion good',
           confidence: 0.9,
-          boundingBox: { x: 0, y: 0, width: 40, height: 40 },
+          boundingBox: { x: 0, y: 0, width: 10, height: 10 },
         },
       ],
       120,
@@ -64,7 +64,7 @@ describe('ObjectFilter', () => {
           confidence: 0.92,
           alternativeLabels: [
             { text: 'Sky', confidence: 0.92 },
-            { text: 'Chair', confidence: 0.62 },
+            { text: 'Chair', confidence: 0.72 },
           ],
           boundingBox: { x: 20, y: 20, width: 40, height: 40 },
         },
@@ -110,5 +110,53 @@ describe('ObjectFilter', () => {
     );
 
     expect(detection?.label).toBe('chair');
+  });
+
+  it('drops tiny tabletop-style objects that are not useful for navigation', () => {
+    const detections = filterDetections(
+      [
+        {
+          label: 'Tableware',
+          confidence: 0.94,
+          boundingBox: { x: 70, y: 30, width: 8, height: 8 },
+        },
+      ],
+      160,
+      120,
+    );
+
+    expect(detections).toHaveLength(0);
+  });
+
+  it('keeps close table objects when they fill enough of the view', () => {
+    const [detection] = filterDetections(
+      [
+        {
+          label: 'Cup',
+          confidence: 0.91,
+          boundingBox: { x: 30, y: 58, width: 70, height: 56 },
+        },
+      ],
+      160,
+      120,
+    );
+
+    expect(detection?.label).toBe('cup');
+  });
+
+  it('turns large generic object boxes into navigation obstacles', () => {
+    const [detection] = filterDetections(
+      [
+        {
+          label: 'Home good',
+          confidence: 0.8,
+          boundingBox: { x: 20, y: 20, width: 90, height: 70 },
+        },
+      ],
+      160,
+      120,
+    );
+
+    expect(detection?.label).toBe('obstacle');
   });
 });

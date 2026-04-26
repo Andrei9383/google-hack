@@ -1,4 +1,11 @@
 #!/bin/nsh
 
-echo "Starting Aura Vest"
+echo "Starting Aura Vest WiFi"
+ifup wlan0
+wapi psk wlan0 12345678 0
+wapi essid wlan0 UPB-Guest 1
+renew wlan0
+ifconfig wlan0
+
+echo "Starting Aura Vest app"
 aura_vest &

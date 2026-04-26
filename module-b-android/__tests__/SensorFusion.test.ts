@@ -18,14 +18,15 @@ function makeDetection(zone: SceneDetection['zone'], tier: SceneDetection['tier'
 }
 
 describe('SensorFusion', () => {
-  it('suppresses danger overrides when the vest is already at max intensity', () => {
+  it('sends danger commands from ultrasonic readings even without vision', () => {
     const result = fuseSensorData({
       vest: { left: 18, center: 255, right: 255 },
-      mlkit: [makeDetection('left', 'DANGER')],
+      mlkit: [],
       now: 1000,
     });
 
-    expect(result.hapticOverrides).toHaveLength(0);
+    expect(result.hapticOverrides[0]?.zone).toBe('left');
+    expect([...result.hapticOverrides[0]?.payload ?? []]).toEqual([0x01, 0xff, 0x02]);
   });
 
   it('sends danger overrides when sonar misses a hazard', () => {
@@ -35,21 +36,52 @@ describe('SensorFusion', () => {
       now: 1000,
     });
 
-    expect(result.hapticOverrides).toHaveLength(1);
-    expect(result.hapticOverrides[0]?.zone).toBe('center');
-    expect([...result.hapticOverrides[0]?.payload ?? []]).toEqual([0x02, 0xff, 0x02]);
+    const centerOverride = result.hapticOverrides.find((override) => override.zone === 'center');
+
+    expect(centerOverride).toBeDefined();
+    expect([...centerOverride?.payload ?? []]).toEqual([0x02, 0xff, 0x02]);
   });
 
-  it('suppresses duplicate overrides within 500ms', () => {
+  it('sends clear commands so the app remains authoritative when the path is open', () => {
+    const result = fuseSensorData({
+      vest: { left: 255, center: 255, right: 255 },
+      mlkit: [],
+      now: 1000,
+    });
+
+    expect(result.hapticOverrides).toHaveLength(3);
+    expect(result.hapticOverrides.map((override) => [...override.payload])).toEqual([
+      [0x01, 0x00, 0x00],
+      [0x02, 0x00, 0x00],
+      [0x03, 0x00, 0x00],
+    ]);
+  });
+
+  it('suppresses duplicate commands briefly but resends before vest overrides expire', () => {
     const result = fuseSensorData({
       vest: { left: 120, center: 255, right: 255 },
-      mlkit: [makeDetection('left', 'STATIC')],
+      mlkit: [],
       now: 1200,
       previousOverrides: {
-        left: { tier: 'STATIC', timestamp: 900 },
+        left: { tier: 'STATIC', intensity: 0x70, pattern: 0x00, timestamp: 900 },
+        center: { tier: 'CLEAR', intensity: 0x00, pattern: 0x00, timestamp: 900 },
+        right: { tier: 'CLEAR', intensity: 0x00, pattern: 0x00, timestamp: 900 },
       },
     });
 
     expect(result.hapticOverrides).toHaveLength(0);
+
+    const resend = fuseSensorData({
+      vest: { left: 120, center: 255, right: 255 },
+      mlkit: [],
+      now: 1900,
+      previousOverrides: {
+        left: { tier: 'STATIC', intensity: 0x70, pattern: 0x00, timestamp: 900 },
+        center: { tier: 'CLEAR', intensity: 0x00, pattern: 0x00, timestamp: 900 },
+        right: { tier: 'CLEAR', intensity: 0x00, pattern: 0x00, timestamp: 900 },
+      },
+    });
+
+    expect(resend.hapticOverrides).toHaveLength(3);
   });
 });

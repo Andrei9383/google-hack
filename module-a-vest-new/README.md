@@ -77,6 +77,8 @@ These defaults use pins that are accessible on the Sparrow headers. Some overlap
 | Center | GPIO12 | GPIO18 | GPIO12 is a boot strap pin, so keep it high-impedance at boot. |
 | Right | GPIO32 | GPIO19 | GPIO18 and GPIO19 overlap SD-card wiring on Sparrow. |
 
+If GPIO18 or GPIO19 are not printed as plain GPIO labels on your Sparrow header, they may be labeled `SCK` and `MISO`.
+
 In the patched Sparrow NuttX board support these appear as:
 
 | Firmware path | Real ESP32 pin |
@@ -87,6 +89,19 @@ In the patched Sparrow NuttX board support these appear as:
 | `/dev/gpio3` | GPIO35 echo left |
 | `/dev/gpio4` | GPIO18 echo center |
 | `/dev/gpio5` | GPIO19 echo right |
+
+Sensor power wiring:
+
+| Sensor | Sensor pin | Connect to |
+|---|---|---|
+| All 3 | `VCC` | Sparrow `5V` or `VIN` |
+| All 3 | `GND` | Common ground |
+| Left | `Trig` | GPIO4 direct |
+| Left | `Echo` | GPIO35 through 5.1 kOhm / 10 kOhm divider |
+| Center | `Trig` | GPIO12 direct |
+| Center | `Echo` | GPIO18 / `SCK` through 5.1 kOhm / 10 kOhm divider |
+| Right | `Trig` | GPIO32 direct |
+| Right | `Echo` | GPIO19 / `MISO` through 5.1 kOhm / 10 kOhm divider |
 
 ### Motors
 
@@ -103,16 +118,16 @@ Configure the PWM devices like this:
 
 ### Power
 
-For a 4xAA pack:
+Use two power rails, with one shared ground:
 
-1. Battery pack `+` goes through a switch.
-2. The switched line feeds a 5 V buck converter.
-3. The buck output powers the Sparrow and the HC-SR04 sensors.
-4. L293D pin `16` (`Vcc1`) goes to 5 V.
-5. L293D pin `8` (`Vcc2`) goes to the actual motor supply.
-6. All grounds must be common.
+1. Sparrow logic power comes from the USB power bank.
+2. HC-SR04 sensors take `VCC` from the Sparrow `5V` or `VIN` pin.
+3. The 4xAA battery pack, about 6 V, powers only L293D pin `8` (`Vcc2` / `Vs`).
+4. L293D pin `16` (`Vcc1` / `Vss`) goes to Sparrow `5V`.
+5. L293D pins `1` and `9` go to Sparrow `5V` to enable both driver sides.
+6. Sparrow `GND`, battery pack `-`, sensor `GND`, and L293D ground pins must all be connected together.
 
-If your vibration motors are rated closer to 3 V, use a second buck converter for the motor rail or reduce the maximum duty cycle.
+The firmware caps motor PWM at about 50% duty by default because the motor rail is about 6 V and the small vibration motors are rated closer to 3 V.
 
 ### L293D
 
@@ -139,10 +154,16 @@ Connect every motor negative wire to ground.
 
 Each sensor must use a voltage divider on `Echo` before the ESP32 input.
 
-- Sensor `Echo` -> 2 kOhm resistor -> ESP32 `Echo` pin
-- ESP32 `Echo` pin -> 3.3 kOhm resistor -> GND
+- Sensor `Echo` -> 5.1 kOhm resistor -> ESP32 `Echo` pin
+- ESP32 `Echo` pin -> 10 kOhm resistor -> GND
 
-This is mandatory because HC-SR04 `Echo` is 5 V and the ESP32 pins are 3.3 V only.
+This maps the HC-SR04 5 V echo pulse to about 3.31 V:
+
+```text
+5 V * 10 / (10 + 5.1) = 3.31 V
+```
+
+This is mandatory because HC-SR04 `Echo` is 5 V and the ESP32 pins are 3.3 V only. Double-check the 10 kOhm resistor to ground; if it disconnects, the ESP32 pin can see the full 5 V echo pulse.
 
 ## Build And Flash
 
@@ -252,6 +273,8 @@ the Sparrow 2024 lab baseline, including:
 - `CONFIG_DEV_GPIO=y`
 - `CONFIG_NETUTILS_NETLIB=y`
 - 4 separate LEDC timers with pins `25`, `26`, `27`, `33`
+- `CONFIG_EXAMPLES_AURA_VEST_MAX_MOTOR_DUTY=128` for a 50% duty hard limit
+- `CONFIG_FS_ROMFS=y` and `CONFIG_ETC_ROMFS=y` so `/etc/init.d/rcS` can run at boot
 - the WiFi and WAPI settings from the Sparrow lab baseline
 
 It also disables the onboard RGB LED, I2S microphone, and SD-card/SPI2 paths
@@ -321,6 +344,10 @@ CONFIG_ESP32_LEDC_CHANNEL0_PIN=25
 CONFIG_ESP32_LEDC_CHANNEL1_PIN=26
 CONFIG_ESP32_LEDC_CHANNEL2_PIN=27
 CONFIG_ESP32_LEDC_CHANNEL3_PIN=33
+CONFIG_EXAMPLES_AURA_VEST_MAX_MOTOR_DUTY=128
+CONFIG_FS_ROMFS=y
+CONFIG_ETC_ROMFS=y
+CONFIG_ETC_ROMFSMOUNTPT="/etc"
 ```
 
 ### 8. Build with the mandatory Sparrow workaround
@@ -387,6 +414,16 @@ renew wlan0
 ifconfig wlan0
 ```
 
+For the current UPB guest setup:
+
+```sh
+ifup wlan0
+wapi psk wlan0 12345678 0
+wapi essid wlan0 UPB-Guest 1
+renew wlan0
+ifconfig wlan0
+```
+
 Use the IP shown by `ifconfig wlan0` in the Android app.
 
 If you are not using the autostart script yet, launch the firmware manually:
@@ -397,13 +434,26 @@ aura_vest &
 
 ## Autostart
 
-This module already includes `init.d/rcS` with:
+This module already includes `init.d/rcS` with the current WiFi setup and app launch:
 
 ```sh
+ifup wlan0
+wapi psk wlan0 12345678 0
+wapi essid wlan0 UPB-Guest 1
+renew wlan0
+ifconfig wlan0
 aura_vest &
 ```
 
-Copy that file into the ROMFS init script location used by your Sparrow image if you want the app to start automatically after boot.
+To bake it into the image, copy it over the NSH ROMFS template before building:
+
+```sh
+cp /home/andrei/google-hackathon-2/module-a-vest-new/init.d/rcS ~/nuttxspace/apps/nshlib/rcS.template
+cd ~/nuttxspace/nuttx
+make EXTRAFLAGS="-DESP32_IGNORE_CHIP_REVISION_CHECK" -j4
+```
+
+After flashing that image, the board should join WiFi and start `aura_vest` automatically after boot.
 
 ## Android Connection Flow
 
@@ -425,10 +475,60 @@ The watch continues to use BLE exactly as before.
 | Distance | PWM intensity | Pattern |
 |---|---:|---|
 | `> 200 cm` | 0% | Off |
-| `150-200 cm` | 15% | 1 Hz pulse |
+| `150-200 cm` | ~27% | 1 Hz pulse |
 | `100-150 cm` | 35% | 2 Hz pulse |
-| `50-100 cm` | 65% | 4 Hz pulse |
-| `20-50 cm` | 90% | 8 Hz pulse |
-| `< 20 cm` | 100% | Continuous |
+| `50-100 cm` | ~44% | 4 Hz pulse |
+| `20-50 cm` | ~45% | 8 Hz pulse |
+| `< 20 cm` | 50% hard limit | Continuous |
 
-Nonzero commands are remapped above a minimum duty cycle so small vibration motors actually start spinning.
+Nonzero commands below the minimum useful duty are raised to about 27%, and all commands are capped by `CONFIG_EXAMPLES_AURA_VEST_MAX_MOTOR_DUTY`.
+
+## Bring-Up Troubleshooting
+
+### Serial Shows `L=400cm C=400cm R=400cm`
+
+`400cm` is the firmware's timeout / out-of-range value. If all three sensors stay at `400cm`, the firmware is not seeing any `Echo` pulse.
+
+Check these first:
+
+- Confirm every HC-SR04 has `VCC` on Sparrow `5V` or `VIN`, not 3.3 V.
+- Confirm all grounds are common: Sparrow, sensors, battery pack, and L293D.
+- Measure the divider midpoint while a sensor is active. The ESP32 side of `Echo` should never exceed about 3.3 V.
+- Check the 10 kOhm resistor really goes from the ESP32 echo pin to ground.
+- Verify `/dev/gpio0..5` are the patched Sparrow GPIO devices, not the stock board mapping.
+- If center/right do not work, verify GPIO18 and GPIO19 are the header pins labeled `SCK` and `MISO`, and keep SD-card/SPI2 disabled.
+- Keep GPIO12 from being pulled hard at boot; it is a strap pin.
+
+### Override Logs Appear But Motors Do Not Change
+
+The override lines mean the Android app is reaching the vest. For example:
+
+```text
+aura_vest: override motor_id=2 intensity=70 pattern=1
+```
+
+That command drives the center motors only. The repeated `intensity=0` commands for left and right intentionally stop those motors.
+
+If you still feel no change:
+
+- Confirm L293D pin `8` is on the 4xAA motor battery positive, not Sparrow 5 V.
+- Confirm L293D pin `16`, pin `1`, and pin `9` are on Sparrow 5 V.
+- Confirm L293D pins `4`, `5`, `12`, and `13` are on common ground.
+- Confirm each motor negative wire goes to common ground in this single-ended wiring.
+- Test one zone from a browser or terminal:
+
+  ```sh
+  curl -X POST http://<sparrow-ip>:8080/api/v1/haptic \
+    -H 'Content-Type: application/json' \
+    -d '{"motorId":2,"intensity":255,"pattern":2}'
+  ```
+
+  Then stop it:
+
+  ```sh
+  curl -X POST http://<sparrow-ip>:8080/api/v1/haptic \
+    -H 'Content-Type: application/json' \
+    -d '{"motorId":2,"intensity":0,"pattern":2}'
+  ```
+
+The firmware treats intensity `0` as a real off command and writes 0% PWM to the selected motor output.

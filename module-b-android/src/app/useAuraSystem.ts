@@ -3,7 +3,12 @@ import { useEffect, useMemo, useRef } from 'react';
 import { AppState } from 'react-native';
 
 import { DEFAULT_VEST_BASE_URL } from '../ble/constants';
-import { VEST_STATUS_LABELS, type VestStatusCode } from '../ble/VestProtocol';
+import {
+  VEST_STATUS_LABELS,
+  type AuraZone,
+  type HapticTier,
+  type VestStatusCode,
+} from '../ble/VestProtocol';
 import { AuraConnectivityManager } from '../connectivity/AuraConnectivityManager';
 import { fuseSensorData } from '../fusion/SensorFusion';
 import {
@@ -33,6 +38,8 @@ function announcementForVestStatus(status: VestStatusCode): string | null {
 
 export function useAuraSystem(cameraGranted: boolean) {
   const connectivityManagerRef = useRef<AuraConnectivityManager | null>(null);
+  const fusionInFlightRef = useRef(false);
+  const fusionPendingRef = useRef(false);
 
   const setCameraActive = useSystemStore((state) => state.setCameraActive);
   const setPhoneBatteryLevel = useSystemStore((state) => state.setPhoneBatteryLevel);
@@ -53,26 +60,68 @@ export function useAuraSystem(cameraGranted: boolean) {
     await speak(description, 'scene');
   });
 
+  const sendVestTest = useEventCallback(async (zone: AuraZone, tier: HapticTier = 'DYNAMIC') => {
+    const acknowledged = await connectivityManagerRef.current?.sendHapticOverride(zone, tier);
+
+    if (acknowledged) {
+      const intensity = { DANGER: 0xff, DYNAMIC: 0xb0, STATIC: 0x70 }[tier];
+      const pattern = { DANGER: 0x02, DYNAMIC: 0x01, STATIC: 0x00 }[tier];
+
+      setOverride(zone, { tier, intensity, pattern, timestamp: Date.now() });
+      setLastError(null);
+    }
+  });
+
+  const sendFusionCommands = useEventCallback(async () => {
+    if (fusionInFlightRef.current) {
+      fusionPendingRef.current = true;
+      return;
+    }
+
+    fusionInFlightRef.current = true;
+
+    try {
+      do {
+        fusionPendingRef.current = false;
+
+        const snapshot = useSystemStore.getState();
+        const fusionOutput = fuseSensorData({
+          vest: snapshot.vestSensorData,
+          mlkit: snapshot.detections,
+          previousOverrides: snapshot.lastOverrides,
+        });
+
+        for (const override of fusionOutput.hapticOverrides) {
+          const acknowledged = await connectivityManagerRef.current?.sendHapticPayload(override.payload);
+
+          if (acknowledged) {
+            setOverride(override.zone, {
+              tier: override.tier,
+              intensity: override.intensity,
+              pattern: override.pattern,
+              timestamp: Date.now(),
+            });
+            setLastError(null);
+          }
+        }
+      } while (fusionPendingRef.current);
+    } finally {
+      fusionInFlightRef.current = false;
+    }
+  });
+
   const handleVisionDetections = useEventCallback(
-    async (detections: NativeDetectedObject[], frameWidth: number) => {
-      const filtered = filterDetections(detections, frameWidth);
+    async (detections: NativeDetectedObject[], frameWidth: number, frameHeight: number) => {
+      const filtered = filterDetections(detections, frameWidth, frameHeight);
       setDetections(filtered);
 
-      const snapshot = useSystemStore.getState();
-      const fusionOutput = fuseSensorData({
-        vest: snapshot.vestSensorData,
-        mlkit: filtered,
-        previousOverrides: snapshot.lastOverrides,
-      });
-
-      for (const override of fusionOutput.hapticOverrides) {
-        await connectivityManagerRef.current?.sendHapticOverride(override.zone, override.tier);
-        setOverride(override.zone, { tier: override.tier, timestamp: Date.now() });
-      }
-
       if (filtered.length > 0) {
+        const snapshot = useSystemStore.getState();
+
         setLastScene(formatSceneDescription(filtered, snapshot.vestSensorData));
       }
+
+      await sendFusionCommands();
     },
   );
 
@@ -101,6 +150,7 @@ export function useAuraSystem(cameraGranted: boolean) {
       onVestSensorData: (sensorData) => {
         setVestSensorData(sensorData);
         setLastError(null);
+        void sendFusionCommands();
       },
       onVestStatus: (status) => {
         setVestStatus(status);
@@ -148,7 +198,7 @@ export function useAuraSystem(cameraGranted: boolean) {
       connectivityManagerRef.current = null;
       void stopForegroundServiceAsync();
     };
-  }, [announceSystem, describeSceneNow, setLastError, setPhoneBatteryLevel, setVestConnected, setVestSensorData, setVestStatus, setWatchConnected, vestBaseUrl]);
+  }, [announceSystem, describeSceneNow, sendFusionCommands, setLastError, setPhoneBatteryLevel, setVestConnected, setVestSensorData, setVestStatus, setWatchConnected, vestBaseUrl]);
 
   useEffect(() => {
     if (!hasNativeAuraModule) {
@@ -161,8 +211,9 @@ export function useAuraSystem(cameraGranted: boolean) {
       describeSceneNow,
       handleVisionDetections,
       handleVisionError,
+      sendVestTest,
       vestStatusLabel: VEST_STATUS_LABELS[useSystemStore.getState().vestStatus],
     }),
-    [describeSceneNow, handleVisionDetections, handleVisionError],
+    [describeSceneNow, handleVisionDetections, handleVisionError, sendVestTest],
   );
 }

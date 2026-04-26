@@ -33,7 +33,7 @@ interface ConnectivityCallbacks {
 
 type DeviceRole = 'watch';
 
-type VestStateResponse = {
+type VestStateObjectResponse = {
   sensorPayload?: unknown;
   sensor?: {
     left?: unknown;
@@ -42,6 +42,10 @@ type VestStateResponse = {
   };
   status?: unknown;
 };
+type VestStateResponse = VestStateObjectResponse | unknown[];
+
+const VEST_FAILURES_BEFORE_DISCONNECT = 3;
+const VEST_HAPTIC_RETRY_DELAYS_MS = [0, 140, 320] as const;
 
 function normalizeUuid(uuid: string): string {
   return uuid.toLowerCase();
@@ -65,6 +69,22 @@ function coerceByte(value: unknown, fieldName: string): number {
   }
 
   return Math.max(0, Math.min(255, Math.round(value)));
+}
+
+function isVestStateObject(response: VestStateResponse): response is VestStateObjectResponse {
+  return typeof response === 'object' && response !== null && !Array.isArray(response);
+}
+
+function vestSensorPayloadSource(response: VestStateResponse): unknown[] {
+  if (Array.isArray(response)) {
+    return response;
+  }
+
+  if (Array.isArray(response.sensorPayload)) {
+    return response.sensorPayload;
+  }
+
+  return [response.sensor?.left, response.sensor?.center, response.sensor?.right];
 }
 
 async function requestJson<T>(url: string, init?: RequestInit, timeoutMs = BLE_SIGNAL_TIMEOUT_MS): Promise<T> {
@@ -106,6 +126,7 @@ export class AuraConnectivityManager {
   private watchDevice: Device | null = null;
   private vestPollTimer: ReturnType<typeof setInterval> | null = null;
   private vestPollInFlight = false;
+  private consecutiveVestFailures = 0;
   private lastVestConnected = false;
   private lastWatchConnected = false;
   private lastVestStatus: VestStatusCode | null = null;
@@ -130,35 +151,50 @@ export class AuraConnectivityManager {
     }, VEST_POLL_INTERVAL_MS);
   }
 
-  async sendHapticOverride(zone: AuraZone, tier: HapticTier) {
+  async sendHapticOverride(zone: AuraZone, tier: HapticTier): Promise<boolean> {
+    return this.sendHapticPayload(buildHapticOverride(zone, tier));
+  }
+
+  async sendHapticPayload(payload: Uint8Array): Promise<boolean> {
     const baseUrl = normalizeVestBaseUrl(this.vestBaseUrl);
 
     if (!baseUrl) {
-      return;
+      return false;
     }
 
-    const payload = buildHapticOverride(zone, tier);
+    let lastError: unknown = null;
 
-    try {
-      await requestJson(
-        `${baseUrl}${VEST_HAPTIC_PATH}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
+    for (const delayMs of VEST_HAPTIC_RETRY_DELAYS_MS) {
+      if (delayMs > 0) {
+        await delay(delayMs);
+      }
+
+      try {
+        await requestJson(
+          `${baseUrl}${VEST_HAPTIC_PATH}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+            },
+            body: JSON.stringify({
+              motorId: payload[0],
+              intensity: payload[1],
+              pattern: payload[2],
+            }),
           },
-          body: JSON.stringify({
-            motorId: payload[0],
-            intensity: payload[1],
-            pattern: payload[2],
-          }),
-        },
-        VEST_REQUEST_TIMEOUT_MS,
-      );
-    } catch (error) {
-      this.reportError(getConnectivityErrorMessage(error));
+          VEST_REQUEST_TIMEOUT_MS,
+        );
+
+        return true;
+      } catch (error) {
+        lastError = error;
+      }
     }
+
+    this.reportError(getConnectivityErrorMessage(lastError));
+    return false;
   }
 
   destroy() {
@@ -282,6 +318,7 @@ export class AuraConnectivityManager {
     const baseUrl = normalizeVestBaseUrl(this.vestBaseUrl);
 
     if (!baseUrl) {
+      this.consecutiveVestFailures = 0;
       this.updateVestConnection(false);
       return;
     }
@@ -303,15 +340,15 @@ export class AuraConnectivityManager {
         VEST_REQUEST_TIMEOUT_MS,
       );
 
-      const payloadSource = Array.isArray(response.sensorPayload)
-        ? response.sensorPayload
-        : [response.sensor?.left, response.sensor?.center, response.sensor?.right];
+      const payloadSource = vestSensorPayloadSource(response);
       const sensorPayload = new Uint8Array([
         coerceByte(payloadSource[0], 'left sensor value'),
         coerceByte(payloadSource[1], 'center sensor value'),
         coerceByte(payloadSource[2], 'right sensor value'),
       ]);
-      const statusPayload = new Uint8Array([coerceByte(response.status ?? 0x00, 'status')]);
+      const statusPayload = new Uint8Array([
+        coerceByte(isVestStateObject(response) ? response.status ?? 0x00 : 0x00, 'status'),
+      ]);
       const status = parseStatusPayload(statusPayload);
 
       this.callbacks.onVestSensorData(parseSensorPayload(sensorPayload));
@@ -321,9 +358,16 @@ export class AuraConnectivityManager {
         this.callbacks.onVestStatus(status);
       }
 
+      this.consecutiveVestFailures = 0;
       this.updateVestConnection(true);
       this.lastErrorMessage = null;
     } catch (error) {
+      this.consecutiveVestFailures += 1;
+
+      if (this.lastVestConnected && this.consecutiveVestFailures < VEST_FAILURES_BEFORE_DISCONNECT) {
+        return;
+      }
+
       this.updateVestConnection(false);
       this.reportError(getConnectivityErrorMessage(error));
     } finally {
@@ -369,4 +413,10 @@ function getConnectivityErrorMessage(error: unknown): string {
 
 function decodeBleValue(value: string): Uint8Array {
   return new Uint8Array(Buffer.from(value, 'base64'));
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }

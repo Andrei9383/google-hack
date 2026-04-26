@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import type { VestSensorData } from '../ble/VestProtocol';
+import type { AuraZone, VestSensorData } from '../ble/VestProtocol';
+import type { OverrideRecord } from '../fusion/SensorFusion';
 
 interface StatusScreenProps {
   auraActive: boolean;
@@ -11,10 +12,12 @@ interface StatusScreenProps {
   phoneBatteryLevel: number | null;
   vestBaseUrl: string;
   sensorData: VestSensorData;
+  lastOverrides: Partial<Record<AuraZone, OverrideRecord>>;
   lastScene: string;
   lastError: string | null;
   onApplyVestBaseUrl: (baseUrl: string) => void;
   onDescribeNow: () => void;
+  onSendVestTest: (zone: AuraZone) => void;
 }
 
 export function StatusScreen({
@@ -25,12 +28,19 @@ export function StatusScreen({
   phoneBatteryLevel,
   vestBaseUrl,
   sensorData,
+  lastOverrides,
   lastScene,
   lastError,
   onApplyVestBaseUrl,
   onDescribeNow,
+  onSendVestTest,
 }: StatusScreenProps) {
   const [vestBaseUrlDraft, setVestBaseUrlDraft] = useState(vestBaseUrl);
+  const lastOverride = mostRecentOverride(lastOverrides);
+  const sensorUpdateLabel =
+    sensorData.timestamp > 0
+      ? `Last board update ${new Date(sensorData.timestamp).toLocaleTimeString()}`
+      : 'No vest state received yet.';
 
   useEffect(() => {
     setVestBaseUrlDraft(vestBaseUrl);
@@ -79,10 +89,59 @@ export function StatusScreen({
       </View>
 
       <View style={styles.panel}>
-        <Text style={styles.panelTitle}>Live Distance</Text>
+        <Text style={styles.panelTitle}>Vest Sensors</Text>
+        <Text style={styles.panelSubtitle}>Board-reported values, not camera detections.</Text>
+        <Text style={styles.panelHint}>{sensorUpdateLabel}</Text>
         <SensorRow label="LEFT" distance={sensorData.left} />
         <SensorRow label="CENTER" distance={sensorData.center} />
         <SensorRow label="RIGHT" distance={sensorData.right} />
+      </View>
+
+      <View style={styles.panel}>
+        <Text style={styles.panelTitle}>Vest Command Ack</Text>
+        <Text accessibilityLabel="Last acknowledged vest command" style={styles.sceneText}>
+          {lastOverride
+            ? `${lastOverride.zone.toUpperCase()} ${lastOverride.record.tier} at ${new Date(lastOverride.record.timestamp).toLocaleTimeString()}`
+            : 'No app-triggered vest command acknowledged yet.'}
+        </Text>
+        <Text style={styles.panelHint}>Use the motor test buttons below to bench-test phone-to-vest commands.</Text>
+      </View>
+
+      <View style={styles.panel}>
+        <Text style={styles.panelTitle}>Motor Test</Text>
+        <Text style={styles.panelSubtitle}>Sends a direct bench-test command to the vest.</Text>
+        <View style={styles.testRow}>
+          <Pressable
+            accessibilityLabel="Test left motor"
+            accessibilityRole="button"
+            onPress={() => {
+              onSendVestTest('left');
+            }}
+            style={styles.testButton}
+          >
+            <Text style={styles.testButtonText}>TEST LEFT</Text>
+          </Pressable>
+          <Pressable
+            accessibilityLabel="Test center motors"
+            accessibilityRole="button"
+            onPress={() => {
+              onSendVestTest('center');
+            }}
+            style={styles.testButton}
+          >
+            <Text style={styles.testButtonText}>TEST CENTER</Text>
+          </Pressable>
+          <Pressable
+            accessibilityLabel="Test right motor"
+            accessibilityRole="button"
+            onPress={() => {
+              onSendVestTest('right');
+            }}
+            style={styles.testButton}
+          >
+            <Text style={styles.testButtonText}>TEST RIGHT</Text>
+          </Pressable>
+        </View>
       </View>
 
       <View style={styles.panel}>
@@ -139,6 +198,24 @@ function SensorRow({ label, distance }: { label: string; distance: number }) {
       </Text>
     </View>
   );
+}
+
+function mostRecentOverride(lastOverrides: Partial<Record<AuraZone, OverrideRecord>>) {
+  let latest: { zone: AuraZone; record: OverrideRecord } | null = null;
+
+  for (const zone of Object.keys(lastOverrides) as AuraZone[]) {
+    const record = lastOverrides[zone];
+
+    if (!record) {
+      continue;
+    }
+
+    if (!latest || record.timestamp > latest.record.timestamp) {
+      latest = { zone, record };
+    }
+  }
+
+  return latest;
 }
 
 const styles = StyleSheet.create({
@@ -249,6 +326,17 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 16,
   },
+  panelSubtitle: {
+    color: '#8ca2b3',
+    fontSize: 13,
+    marginTop: -8,
+    marginBottom: 6,
+  },
+  panelHint: {
+    color: '#8ca2b3',
+    fontSize: 12,
+    marginBottom: 16,
+  },
   sensorRow: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -283,6 +371,26 @@ const styles = StyleSheet.create({
     color: '#d8e5ee',
     fontSize: 16,
     lineHeight: 24,
+  },
+  testRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  testButton: {
+    alignItems: 'center',
+    backgroundColor: '#10202b',
+    borderColor: '#2fd08c',
+    borderRadius: 14,
+    borderWidth: 1,
+    flex: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+  },
+  testButtonText: {
+    color: '#d8e5ee',
+    fontSize: 12,
+    fontWeight: '800',
+    textAlign: 'center',
   },
   errorCard: {
     backgroundColor: '#3b1f22',

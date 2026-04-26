@@ -9,6 +9,7 @@ export interface SceneDetection extends NativeDetectedObject {
 }
 
 const GENERIC_LABELS = new Set(['fashion good', 'home good', 'object', 'unknown']);
+const ALWAYS_IGNORED_LABELS = new Set(['selfie']);
 const SCENE_ONLY_LABELS = new Set([
   'atmosphere',
   'ceiling',
@@ -27,6 +28,24 @@ const SCENE_ONLY_LABELS = new Set([
 ]);
 const DANGER_LABELS = new Set(['person', 'bicycle', 'motorcycle', 'car']);
 const DYNAMIC_LABELS = new Set(['dog', 'cat', 'bird', 'sports ball', 'animal']);
+const SMALL_OBJECT_LABELS = new Set([
+  'bottle',
+  'bowl',
+  'cat',
+  'coffee cup',
+  'cup',
+  'cutlery',
+  'dish',
+  'drinkware',
+  'fork',
+  'glass',
+  'knife',
+  'musical instrument',
+  'plate',
+  'spoon',
+  'tableware',
+  'wine glass',
+]);
 
 const tierPriority: Record<HapticTier, number> = {
   DANGER: 3,
@@ -51,14 +70,16 @@ export function classifyTier(label: string): HapticTier {
 export function filterDetections(
   detections: NativeDetectedObject[],
   frameWidth: number,
-  frameHeight = Number.MAX_SAFE_INTEGER,
+  frameHeight = frameWidth,
 ): SceneDetection[] {
   return detections
     .map(withBestAvailableLabel)
     .filter((detection) => detection.label.trim().length > 0)
+    .filter((detection) => isUsableBox(detection.boundingBox, frameWidth, frameHeight))
+    .map((detection) => withNavigationFallback(detection, frameWidth, frameHeight))
     .filter((detection) => isActionableLabel(detection.label))
     .filter((detection) => detection.confidence >= VISION_CONFIDENCE_THRESHOLD)
-    .filter((detection) => isUsableBox(detection.boundingBox, frameWidth, frameHeight))
+    .filter((detection) => isNavigationRelevantDetection(detection, frameWidth, frameHeight))
     .map((detection) => ({
       ...detection,
       tier: classifyTier(detection.label),
@@ -108,6 +129,25 @@ function withBestAvailableLabel(detection: NativeDetectedObject): NativeDetected
   };
 }
 
+function withNavigationFallback(
+  detection: NativeDetectedObject,
+  frameWidth: number,
+  frameHeight: number,
+): NativeDetectedObject {
+  if (!GENERIC_LABELS.has(normalizeLabel(detection.label))) {
+    return detection;
+  }
+
+  if (!isLargeNavigationBox(detection.boundingBox, frameWidth, frameHeight)) {
+    return detection;
+  }
+
+  return {
+    ...detection,
+    label: 'obstacle',
+  };
+}
+
 function normalizeLabel(label: string): string {
   return label.trim().toLowerCase();
 }
@@ -115,7 +155,11 @@ function normalizeLabel(label: string): string {
 function isActionableLabel(label: string): boolean {
   const normalized = normalizeLabel(label);
 
-  return !GENERIC_LABELS.has(normalized) && !SCENE_ONLY_LABELS.has(normalized);
+  return (
+    !GENERIC_LABELS.has(normalized) &&
+    !ALWAYS_IGNORED_LABELS.has(normalized) &&
+    !SCENE_ONLY_LABELS.has(normalized)
+  );
 }
 
 function readableLabel(label: string): string {
@@ -130,4 +174,58 @@ export function byPriorityThenConfidence(a: SceneDetection, b: SceneDetection): 
   }
 
   return b.confidence - a.confidence;
+}
+
+function isNavigationRelevantDetection(
+  detection: NativeDetectedObject,
+  frameWidth: number,
+  frameHeight: number,
+): boolean {
+  const metrics = boxMetrics(detection.boundingBox, frameWidth, frameHeight);
+
+  if (metrics.areaRatio <= 0 || metrics.widthRatio <= 0 || metrics.heightRatio <= 0) {
+    return false;
+  }
+
+  const label = normalizeLabel(detection.label);
+
+  if (SMALL_OBJECT_LABELS.has(label)) {
+    return metrics.areaRatio >= 0.12 || (metrics.bottomRatio >= 0.7 && metrics.areaRatio >= 0.06);
+  }
+
+  return isLargeNavigationBox(detection.boundingBox, frameWidth, frameHeight);
+}
+
+function isLargeNavigationBox(
+  box: NativeDetectedObject['boundingBox'],
+  frameWidth: number,
+  frameHeight: number,
+): boolean {
+  const metrics = boxMetrics(box, frameWidth, frameHeight);
+
+  return (
+    metrics.areaRatio >= 0.055 ||
+    (metrics.heightRatio >= 0.28 && metrics.widthRatio >= 0.08) ||
+    (metrics.bottomRatio >= 0.58 && metrics.areaRatio >= 0.025)
+  );
+}
+
+function boxMetrics(
+  box: NativeDetectedObject['boundingBox'],
+  frameWidth: number,
+  frameHeight: number,
+) {
+  const safeWidth = Math.max(frameWidth, 1);
+  const safeHeight = Math.max(frameHeight, 1);
+  const widthRatio = Math.max(0, box.width) / safeWidth;
+  const heightRatio = Math.max(0, box.height) / safeHeight;
+  const areaRatio = widthRatio * heightRatio;
+  const bottomRatio = (box.y + box.height) / safeHeight;
+
+  return {
+    areaRatio,
+    bottomRatio,
+    heightRatio,
+    widthRatio,
+  };
 }

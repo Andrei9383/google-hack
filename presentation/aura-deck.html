@@ -1,0 +1,899 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Project Aura Presentation</title>
+  <style>
+    :root {
+      --ink: #17202a;
+      --muted: #53616f;
+      --paper: #fbfaf7;
+      --panel: #ffffff;
+      --line: #d9ded7;
+      --green: #1f8a70;
+      --blue: #2563a9;
+      --coral: #d95d39;
+      --gold: #d6a329;
+      --violet: #6c5ce7;
+      --dark: #11222f;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      background: #e9ecef;
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      line-height: 1.35;
+    }
+
+    body {
+      padding: 24px;
+    }
+
+    .deck {
+      display: grid;
+      gap: 24px;
+      justify-content: center;
+    }
+
+    .slide {
+      position: relative;
+      width: 13.333in;
+      height: 7.5in;
+      overflow: hidden;
+      background: var(--paper);
+      border: 1px solid #cfd6dc;
+      box-shadow: 0 18px 48px rgba(15, 23, 42, 0.18);
+      padding: 0.52in 0.62in;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+
+    .slide::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(90deg, rgba(37, 99, 169, 0.055) 1px, transparent 1px),
+        linear-gradient(0deg, rgba(31, 138, 112, 0.045) 1px, transparent 1px);
+      background-size: 54px 54px;
+      mask-image: linear-gradient(120deg, rgba(0,0,0,0.55), transparent 58%);
+    }
+
+    .title-slide {
+      background:
+        radial-gradient(circle at 72% 18%, rgba(214, 163, 41, 0.18), transparent 26%),
+        linear-gradient(135deg, #fbfaf7 0%, #edf6f1 45%, #f7eee8 100%);
+    }
+
+    header {
+      position: relative;
+      z-index: 2;
+    }
+
+    .kicker {
+      margin: 0 0 10px;
+      color: var(--green);
+      font-size: 0.17in;
+      font-weight: 750;
+      text-transform: uppercase;
+      letter-spacing: 0;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin-top: 0;
+    }
+
+    h1 {
+      max-width: 8.3in;
+      margin-bottom: 0.18in;
+      font-size: 0.78in;
+      line-height: 0.95;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      max-width: 9.8in;
+      margin-bottom: 0.26in;
+      font-size: 0.46in;
+      line-height: 1.06;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin-bottom: 0.08in;
+      font-size: 0.22in;
+      line-height: 1.18;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      max-width: 7.2in;
+      color: var(--muted);
+      font-size: 0.23in;
+    }
+
+    .content {
+      position: relative;
+      z-index: 2;
+      min-height: 0;
+      display: grid;
+      align-items: stretch;
+      gap: 0.28in;
+    }
+
+    .two-col {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .two-col-wide {
+      grid-template-columns: 1.14fr 0.86fr;
+    }
+
+    .three-col {
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    .stack {
+      display: grid;
+      gap: 0.18in;
+      align-content: start;
+    }
+
+    .panel {
+      background: rgba(255, 255, 255, 0.82);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0.22in;
+      box-shadow: 0 10px 26px rgba(17, 34, 47, 0.08);
+    }
+
+    .panel.dark {
+      background: var(--dark);
+      color: #f7fbff;
+      border-color: rgba(255, 255, 255, 0.12);
+    }
+
+    .panel.dark p,
+    .panel.dark .muted {
+      color: #c9d6df;
+    }
+
+    .big-stat {
+      font-size: 0.58in;
+      font-weight: 850;
+      color: var(--coral);
+      line-height: 1;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .lede {
+      font-size: 0.27in;
+      line-height: 1.24;
+    }
+
+    .body-copy {
+      color: var(--muted);
+      font-size: 0.19in;
+    }
+
+    ul {
+      margin: 0;
+      padding-left: 0.23in;
+      color: var(--muted);
+      font-size: 0.19in;
+    }
+
+    li {
+      margin-bottom: 0.09in;
+    }
+
+    .label {
+      display: inline-block;
+      margin-bottom: 0.08in;
+      padding: 0.04in 0.09in;
+      border-radius: 999px;
+      background: rgba(31, 138, 112, 0.1);
+      color: var(--green);
+      font-size: 0.13in;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0;
+    }
+
+    .placeholder {
+      position: relative;
+      min-height: 1.6in;
+      border: 2px dashed #9aa8b2;
+      border-radius: 8px;
+      background:
+        linear-gradient(135deg, rgba(255,255,255,0.78), rgba(255,255,255,0.5)),
+        repeating-linear-gradient(45deg, rgba(37,99,169,0.08) 0 12px, rgba(31,138,112,0.08) 12px 24px);
+      display: grid;
+      place-items: center;
+      padding: 0.24in;
+      text-align: center;
+      color: #43505d;
+      font-weight: 750;
+    }
+
+    .placeholder span {
+      display: block;
+      margin-top: 0.04in;
+      color: var(--muted);
+      font-size: 0.14in;
+      font-weight: 500;
+    }
+
+    .placeholder.tall {
+      min-height: 3.65in;
+    }
+
+    .placeholder.short {
+      min-height: 1.18in;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 0.12in;
+      align-items: center;
+    }
+
+    .flow-node {
+      min-height: 1.15in;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.86);
+      padding: 0.14in;
+      display: grid;
+      align-content: center;
+      text-align: center;
+      font-weight: 800;
+    }
+
+    .flow-node small {
+      display: block;
+      margin-top: 0.05in;
+      color: var(--muted);
+      font-size: 0.12in;
+      font-weight: 650;
+    }
+
+    .flow-arrow {
+      text-align: center;
+      color: var(--blue);
+      font-size: 0.32in;
+      font-weight: 900;
+    }
+
+    .diagram {
+      width: 100%;
+      height: 100%;
+      min-height: 3.4in;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.88);
+      padding: 0.16in;
+    }
+
+    svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .code-line {
+      margin: 0;
+      padding: 0.1in 0.14in;
+      border-radius: 6px;
+      background: #12202d;
+      color: #eaf3fb;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 0.15in;
+      white-space: pre-wrap;
+    }
+
+    .zone-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      height: 2.55in;
+      border: 2px solid #25364a;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #eef4f5;
+    }
+
+    .zone {
+      position: relative;
+      display: grid;
+      place-items: center;
+      border-right: 1px solid rgba(37, 54, 74, 0.28);
+      color: #162635;
+      font-weight: 850;
+      text-transform: uppercase;
+    }
+
+    .zone:last-child {
+      border-right: 0;
+    }
+
+    .zone.left {
+      background: rgba(37, 99, 169, 0.13);
+    }
+
+    .zone.center {
+      background: rgba(31, 138, 112, 0.14);
+    }
+
+    .zone.right {
+      background: rgba(217, 93, 57, 0.13);
+    }
+
+    .bbox {
+      position: absolute;
+      border: 3px solid var(--coral);
+      border-radius: 4px;
+      background: rgba(217, 93, 57, 0.08);
+    }
+
+    .depth-stack {
+      display: grid;
+      gap: 0.1in;
+    }
+
+    .depth-row {
+      display: grid;
+      grid-template-columns: 1.1in 1fr 0.72in;
+      align-items: center;
+      gap: 0.12in;
+      font-size: 0.16in;
+      font-weight: 750;
+    }
+
+    .bar {
+      height: 0.18in;
+      border-radius: 999px;
+      background: #e5e9ef;
+      overflow: hidden;
+    }
+
+    .bar span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--green), var(--gold), var(--coral));
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.88);
+      font-size: 0.15in;
+    }
+
+    th,
+    td {
+      padding: 0.09in 0.11in;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: #ffffff;
+      background: var(--dark);
+      font-size: 0.13in;
+      text-transform: uppercase;
+      letter-spacing: 0;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .timeline {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.14in;
+    }
+
+    .step {
+      position: relative;
+      min-height: 1.35in;
+      padding: 0.2in;
+      border-radius: 8px;
+      color: #fff;
+      background: var(--blue);
+    }
+
+    .step:nth-child(2) {
+      background: var(--green);
+    }
+
+    .step:nth-child(3) {
+      background: var(--coral);
+    }
+
+    .step:nth-child(4) {
+      background: #5d6472;
+    }
+
+    .step strong {
+      display: block;
+      margin-bottom: 0.08in;
+      font-size: 0.24in;
+    }
+
+    .step span {
+      color: rgba(255, 255, 255, 0.86);
+      font-size: 0.15in;
+    }
+
+    .footer {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: #71808e;
+      font-size: 0.12in;
+      font-weight: 650;
+    }
+
+    .slide-num {
+      color: var(--green);
+      font-weight: 850;
+    }
+
+    .quote {
+      margin: 0;
+      padding-left: 0.18in;
+      border-left: 5px solid var(--coral);
+      color: var(--dark);
+      font-size: 0.29in;
+      font-weight: 750;
+      line-height: 1.18;
+    }
+
+    .mini-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.12in;
+    }
+
+    .mini {
+      min-height: 1.05in;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 0.14in;
+    }
+
+    .mini strong {
+      display: block;
+      margin-bottom: 0.04in;
+      color: var(--dark);
+      font-size: 0.17in;
+    }
+
+    .mini span {
+      color: var(--muted);
+      font-size: 0.14in;
+    }
+
+    .callout {
+      border-left: 7px solid var(--green);
+      background: #fff;
+      border-radius: 8px;
+      padding: 0.18in 0.2in;
+      color: var(--muted);
+      font-size: 0.18in;
+      box-shadow: 0 10px 26px rgba(17, 34, 47, 0.08);
+    }
+
+    .callout strong {
+      color: var(--ink);
+    }
+
+    .large-word {
+      font-size: 0.43in;
+      line-height: 1.04;
+      font-weight: 900;
+      color: var(--dark);
+    }
+
+    .small-note {
+      color: var(--muted);
+      font-size: 0.13in;
+    }
+
+    @media print {
+      html,
+      body {
+        width: 13.333in;
+        margin: 0;
+        padding: 0;
+        background: #fff;
+      }
+
+      .deck {
+        display: block;
+      }
+
+      .slide {
+        width: 13.333in;
+        height: 7.5in;
+        margin: 0;
+        border: 0;
+        box-shadow: none;
+        page-break-after: always;
+        break-after: page;
+      }
+
+      .slide:last-child {
+        page-break-after: auto;
+        break-after: auto;
+      }
+    }
+
+    @page {
+      size: 13.333in 7.5in;
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+  <main class="deck">
+    <section class="slide title-slide">
+      <header>
+        <p class="kicker">Google Hackathon 2026</p>
+        <h1>Project Aura</h1>
+        <p class="subtitle">A wearable spatial-awareness system that compresses the 3D world into touch-first guidance: a 2D projection, a depth layer, and haptic language the body can read quickly.</p>
+      </header>
+      <div class="content two-col-wide">
+        <div class="stack">
+          <blockquote class="quote">Seeing the environment is not the same as understanding where it is safe to move.</blockquote>
+          <div class="mini-grid">
+            <div class="mini"><strong>Vest</strong><span>Ultrasonic depth and haptic reflexes</span></div>
+            <div class="mini"><strong>Phone</strong><span>Camera, object detection, fusion, TTS</span></div>
+            <div class="mini"><strong>Watch</strong><span>Intentional scene trigger</span></div>
+            <div class="mini"><strong>User</strong><span>Guidance without visual attention</span></div>
+          </div>
+        </div>
+        <div class="placeholder tall">Hero visual placeholder<span>Use a vest photo, phone demo screenshot, or user journey illustration</span></div>
+      </div>
+      <footer class="footer"><span>Project Aura</span><span class="slide-num">01</span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <p class="kicker">Problem</p>
+        <h2>Spatial awareness has to be fast, calm, and non-visual.</h2>
+      </header>
+      <div class="content two-col">
+        <div class="stack">
+          <div class="panel">
+            <span class="label">Primary user</span>
+            <p class="lede">Visually impaired people need immediate obstacle awareness and optional scene understanding without staring at a screen.</p>
+          </div>
+          <div class="panel">
+            <span class="label">Design pressure</span>
+            <ul>
+              <li>Obstacle avoidance needs very low latency.</li>
+              <li>Audio descriptions are useful, but constant speech is distracting.</li>
+              <li>Visual UI cannot be the main feedback channel.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="placeholder tall">Problem context visual<span>Add photo of navigation scenario, obstacle field, or interview insight</span></div>
+      </div>
+      <footer class="footer"><span>Touch first, speech on demand</span><span class="slide-num">02</span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <p class="kicker">Solution</p>
+        <h2>Aura splits spatial perception into reflexes, intelligence, and intent.</h2>
+      </header>
+      <div class="content">
+        <div class="flow">
+          <div class="flow-node">Vest<small>3 ultrasonic sensors<br>4 vibration motors</small></div>
+          <div class="flow-arrow">&rarr;</div>
+          <div class="flow-node">Android phone<small>Camera + ML Kit<br>sensor fusion</small></div>
+          <div class="flow-arrow">&larr;</div>
+          <div class="flow-node">WearOS watch<small>Button or shake<br>scene request</small></div>
+        </div>
+        <div class="three-col">
+          <div class="panel">
+            <h3>Reflex layer</h3>
+            <p class="body-copy">The vest runs autonomously. If the phone is disconnected, distance-to-vibration still works.</p>
+          </div>
+          <div class="panel">
+            <h3>Interpretation layer</h3>
+            <p class="body-copy">The phone recognizes objects, maps them to zones, fuses them with depth, and sends haptic overrides.</p>
+          </div>
+          <div class="panel">
+            <h3>Intent layer</h3>
+            <p class="body-copy">The watch asks for a spoken scene description only when the user wants more context.</p>
+          </div>
+        </div>
+        <div class="placeholder short">Architecture screenshot placeholder<span>Add app status screen, watch screen, and vest board photo strip</span></div>
+      </div>
+      <footer class="footer"><span>Current transport: vest over WiFi HTTP, watch over BLE</span><span class="slide-num">03</span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <p class="kicker">Core Idea</p>
+        <h2>We do not need a full 3D reconstruction. We need an actionable projection.</h2>
+      </header>
+      <div class="content two-col-wide">
+        <div class="diagram">
+          <svg viewBox="0 0 680 360" role="img" aria-label="3D world projected into camera plane with depth added">
+            <defs>
+              <marker id="arrow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+                <path d="M0,0 L10,4 L0,8 Z" fill="#2563a9"></path>
+              </marker>
+            </defs>
+            <rect x="12" y="20" width="210" height="300" rx="10" fill="#eef4f5" stroke="#d9ded7"></rect>
+            <text x="36" y="58" fill="#11222f" font-size="22" font-weight="800">3D environment</text>
+            <line x1="64" y1="274" x2="174" y2="180" stroke="#53616f" stroke-width="3"></line>
+            <line x1="174" y1="180" x2="198" y2="276" stroke="#53616f" stroke-width="3"></line>
+            <circle cx="84" cy="250" r="18" fill="#d95d39"></circle>
+            <rect x="138" y="120" width="48" height="86" rx="6" fill="#1f8a70"></rect>
+            <rect x="82" y="170" width="50" height="36" rx="5" fill="#d6a329"></rect>
+            <path d="M238 170 C286 170, 300 170, 346 170" stroke="#2563a9" stroke-width="5" marker-end="url(#arrow)" fill="none"></path>
+            <rect x="372" y="32" width="260" height="214" rx="10" fill="#ffffff" stroke="#25364a" stroke-width="3"></rect>
+            <line x1="458" y1="32" x2="458" y2="246" stroke="#25364a" stroke-width="2" opacity="0.45"></line>
+            <line x1="546" y1="32" x2="546" y2="246" stroke="#25364a" stroke-width="2" opacity="0.45"></line>
+            <text x="404" y="68" fill="#2563a9" font-size="18" font-weight="800">LEFT</text>
+            <text x="482" y="68" fill="#1f8a70" font-size="18" font-weight="800">CENTER</text>
+            <text x="572" y="68" fill="#d95d39" font-size="18" font-weight="800">RIGHT</text>
+            <rect x="484" y="96" width="48" height="92" rx="5" fill="rgba(31,138,112,0.28)" stroke="#1f8a70" stroke-width="4"></rect>
+            <circle cx="430" cy="184" r="20" fill="rgba(217,93,57,0.28)" stroke="#d95d39" stroke-width="4"></circle>
+            <rect x="402" y="118" width="45" height="34" rx="4" fill="rgba(214,163,41,0.28)" stroke="#d6a329" stroke-width="4"></rect>
+            <path d="M506 252 L506 324" stroke="#1f8a70" stroke-width="5" marker-end="url(#arrow)" fill="none"></path>
+            <text x="502" y="342" fill="#11222f" font-size="16" font-weight="800" text-anchor="middle">+ depth strip: L55 C120 R255 cm</text>
+          </svg>
+        </div>
+        <div class="stack">
+          <div class="panel dark">
+            <h3>Compression, not simulation</h3>
+            <p class="body-copy">The phone camera gives an image plane. ML Kit places detected objects in that plane. The vest supplies real distance per body zone. Aura combines them into: <strong>what</strong>, <strong>where left-center-right</strong>, and <strong>how close</strong>.</p>
+          </div>
+          <div class="callout"><strong>Presentation line:</strong> "We turn a messy 3D scene into a compact 2.5D signal the user can feel."</div>
+          <div class="placeholder short">Projection illustration placeholder<span>Add photo-to-grid annotation or hand-drawn sketch</span></div>
+        </div>
+      </div>
+      <footer class="footer"><span>3D world -> 2D zones + depth</span><span class="slide-num">04</span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <p class="kicker">Projection Layer</p>
+        <h2>The 2D image is split into body-aligned navigation zones.</h2>
+      </header>
+      <div class="content two-col">
+        <div class="stack">
+          <div class="zone-grid">
+            <div class="zone left">Left<div class="bbox" style="left: 24%; top: 43%; width: 35%; height: 25%;"></div></div>
+            <div class="zone center">Center<div class="bbox" style="left: 28%; top: 21%; width: 44%; height: 48%;"></div></div>
+            <div class="zone right">Right<div class="bbox" style="left: 36%; top: 37%; width: 35%; height: 34%;"></div></div>
+          </div>
+          <p class="code-line">zone = bbox.centerX &lt; 0.33w ? left : bbox.centerX &gt; 0.66w ? right : center</p>
+          <p class="body-copy">This makes object positions match the body: left vibration for left-side risk, center vibration for forward path, right vibration for right-side risk.</p>
+        </div>
+        <div class="placeholder tall">Camera detection screenshot placeholder<span>Use a phone screenshot with bounding boxes and left/center/right overlay</span></div>
+      </div>
+      <footer class="footer"><span>2D screen space becomes tactile body space</span><span class="slide-num">05</span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <p class="kicker">Depth Layer</p>
+        <h2>Ultrasonic sensors add the missing dimension: distance.</h2>
+      </header>
+      <div class="content two-col-wide">
+        <div class="stack">
+          <div class="panel">
+            <span class="label">Vest sensor payload</span>
+            <p class="lede">Three distances are treated as a depth strip across the user's body: left, center, right.</p>
+          </div>
+          <div class="depth-stack panel">
+            <div class="depth-row"><span>Left</span><div class="bar"><span style="width: 78%;"></span></div><span>55 cm</span></div>
+            <div class="depth-row"><span>Center</span><div class="bar"><span style="width: 52%;"></span></div><span>120 cm</span></div>
+            <div class="depth-row"><span>Right</span><div class="bar"><span style="width: 16%;"></span></div><span>255 cm</span></div>
+          </div>
+          <div class="callout"><strong>Why this matters:</strong> camera boxes say "object in center"; depth says whether it is safe background or near-path danger.</div>
+        </div>
+        <div class="placeholder tall">Depth visualization placeholder<span>Add diagram of 3 HC-SR04 cones or live sensor values from the app</span></div>
+      </div>
+      <footer class="footer"><span>Camera gives categories and horizontal position. Vest gives closeness.</span><span class="slide-num">06</span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <p class="kicker">2.5D Fusion</p>
+        <h2>The fusion step decides the strongest useful signal per zone.</h2>
+      </header>
+      <div class="content">
+        <div class="timeline">
+          <div class="step"><strong>1</strong><span>Detect objects in the camera image.</span></div>
+          <div class="step"><strong>2</strong><span>Classify each object as left, center, or right.</span></div>
+          <div class="step"><strong>3</strong><span>Read vest depth in the matching zone.</span></div>
+          <div class="step"><strong>4</strong><span>Send the strongest non-confusing haptic command.</span></div>
+        </div>
+        <div class="two-col">
+          <div class="panel">
+            <h3>Example</h3>
+            <p class="body-copy">A person appears in the center of the camera frame. If center depth is near, Aura sends a strong center warning. If the vest already reports immediate danger, Aura avoids duplicate conflicting feedback.</p>
+          </div>
+          <div class="panel">
+            <h3>Result</h3>
+            <p class="body-copy">The user receives one clear tactile message per zone: static, dynamic, danger, or clear. The phone can still speak object details on request.</p>
+          </div>
+        </div>
+        <div class="placeholder short">Fusion debug screenshot placeholder<span>Add unit-test output, app "last override", or console log showing payloads</span></div>
+      </div>
+      <footer class="footer"><span>Less data, more useful signal</span><span class="slide-num">07</span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <p class="kicker">Haptic Language</p>
+        <h2>Feedback is encoded as location, intensity, and pattern.</h2>
+      </header>
+      <div class="content two-col-wide">
+        <div class="stack">
+          <table>
+            <thead>
+              <tr><th>Signal</th><th>User meaning</th><th>Motor behavior</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Zone</td><td>Where the risk is</td><td>Left, center, right, or both center motors</td></tr>
+              <tr><td>Intensity</td><td>How urgent it feels</td><td>PWM strength, capped for motor safety</td></tr>
+              <tr><td>Pattern</td><td>What kind of object or event</td><td>Static, heartbeat/dynamic, continuous danger</td></tr>
+            </tbody>
+          </table>
+          <div class="panel dark">
+            <p class="large-word">The body reads vibration faster than a sentence.</p>
+            <p class="body-copy">That is why Aura keeps obstacle avoidance haptic and leaves detailed speech as an intentional action.</p>
+          </div>
+        </div>
+        <div class="placeholder tall">Haptic demo visual placeholder<span>Add vest motor layout photo, waveform diagram, or tactile pattern illustration</span></div>
+      </div>
+      <footer class="footer"><span>Location + strength + rhythm</span><span class="slide-num">08</span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <p class="kicker">Distance Mapping</p>
+        <h2>The vest remains useful even when everything else disconnects.</h2>
+      </header>
+      <div class="content two-col">
+        <div class="stack">
+          <table>
+            <thead>
+              <tr><th>Distance</th><th>Vibration</th><th>Meaning</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>&gt; 200 cm</td><td>Off</td><td>Clear path</td></tr>
+              <tr><td>150-200 cm</td><td>Slow pulse</td><td>Distant awareness</td></tr>
+              <tr><td>100-150 cm</td><td>Medium pulse</td><td>Approaching obstacle</td></tr>
+              <tr><td>50-100 cm</td><td>Fast pulse</td><td>Near obstacle</td></tr>
+              <tr><td>20-50 cm</td><td>Rapid pulse</td><td>Very close</td></tr>
+              <tr><td>&lt; 20 cm</td><td>Continuous</td><td>Immediate danger</td></tr>
+            </tbody>
+          </table>
+          <p class="small-note">Implementation note: current firmware caps motor duty for safe driving from the battery and L293D setup.</p>
+        </div>
+        <div class="placeholder tall">Bench test visual placeholder<span>Add video frame or photo of hand approaching sensors and motors responding</span></div>
+      </div>
+      <footer class="footer"><span>Fail-safe reflexes first</span><span class="slide-num">09</span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <p class="kicker">Speech On Demand</p>
+        <h2>The watch turns object detection into an intentional scene description.</h2>
+      </header>
+      <div class="content two-col-wide">
+        <div class="stack">
+          <div class="panel">
+            <h3>User action</h3>
+            <p class="body-copy">Press the watch button or shake the wrist. The watch vibrates briefly to confirm the trigger.</p>
+          </div>
+          <div class="panel">
+            <h3>Phone response</h3>
+            <p class="body-copy">The Android app speaks the latest scene: grouped by left, center, right, and enriched by proximity warnings.</p>
+          </div>
+          <p class="code-line">"Person center. Chair left. Obstacle very close on right."</p>
+          <div class="callout"><strong>Why not always speak?</strong> Audio is powerful, but haptics preserve attention and keep the environment audible.</div>
+        </div>
+        <div class="placeholder tall">Watch and TTS screenshot placeholder<span>Add WearOS button screen plus Android last-scene panel</span></div>
+      </div>
+      <footer class="footer"><span>Always-on touch, optional voice</span><span class="slide-num">10</span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <p class="kicker">Build</p>
+        <h2>Prototype architecture: real sensors, real app, real feedback loop.</h2>
+      </header>
+      <div class="content two-col">
+        <div class="stack">
+          <div class="mini-grid">
+            <div class="mini"><strong>Vest firmware</strong><span>NuttX on Sparrow / ESP32 with HC-SR04 depth sensors.</span></div>
+            <div class="mini"><strong>Haptics</strong><span>Four motors through L293D, controlled by HTTP override payloads.</span></div>
+            <div class="mini"><strong>Android app</strong><span>ML Kit detection, fusion, TTS, watch BLE, and vest WiFi.</span></div>
+            <div class="mini"><strong>WearOS trigger</strong><span>Large scene-request interaction with haptic confirmation.</span></div>
+          </div>
+          <div class="callout"><strong>Built as modules:</strong> firmware, mobile app, and watch trigger can be tested independently.</div>
+        </div>
+        <div class="placeholder tall">Hardware/software collage placeholder<span>Add board wiring, Android status UI, watch UI, and test setup</span></div>
+      </div>
+      <footer class="footer"><span>Three modules, one spatial signal</span><span class="slide-num">11</span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <p class="kicker">Demo</p>
+        <h2>A simple scenario shows the whole loop.</h2>
+      </header>
+      <div class="content">
+        <div class="timeline">
+          <div class="step"><strong>Setup</strong><span>Phone connects to vest URL and subscribes to watch trigger.</span></div>
+          <div class="step"><strong>Approach</strong><span>A hand or obstacle moves through left, center, right depth zones.</span></div>
+          <div class="step"><strong>Recognize</strong><span>Camera detects a person or object and assigns a zone.</span></div>
+          <div class="step"><strong>Feel</strong><span>Vest vibrates the matching zone; watch trigger speaks the scene.</span></div>
+        </div>
+        <div class="three-col">
+          <div class="placeholder">Screenshot 1<span>Vest state values</span></div>
+          <div class="placeholder">Screenshot 2<span>Camera detection</span></div>
+          <div class="placeholder">Screenshot 3<span>Haptic override / TTS result</span></div>
+        </div>
+      </div>
+      <footer class="footer"><span>Recommended live demo path</span><span class="slide-num">12</span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <p class="kicker">Impact</p>
+        <h2>Aura makes spatial information ambient instead of demanding attention.</h2>
+      </header>
+      <div class="content two-col-wide">
+        <div class="stack">
+          <div class="panel dark">
+            <h3>What is novel here?</h3>
+            <p class="body-copy">The system treats 3D perception as an interface problem. Aura is a spatial translator: it turns the world in front of the user into a tactile map they can trust.</p>
+          </div>
+          <div class="mini-grid">
+            <div class="mini"><strong>Fast</strong><span>Vest haptics respond without waiting for speech or UI.</span></div>
+            <div class="mini"><strong>Calm</strong><span>Speech happens only when requested.</span></div>
+            <div class="mini"><strong>Resilient</strong><span>The vest still works in haptic-only mode.</span></div>
+            <div class="mini"><strong>Readable</strong><span>Left, center, right, and depth become a body-aligned signal.</span></div>
+          </div>
+        </div>
+        <div class="placeholder tall">Final impact visual placeholder<span>Add user story photo, polished product render, or before/after diagram</span></div>
+      </div>
+      <footer class="footer"><span>Project Aura</span><span class="slide-num">13</span></footer>
+    </section>
+  </main>
+</body>
+</html>
